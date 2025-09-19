@@ -8,5 +8,11 @@
   },
   "author": "",
   "license": "ISC",
-  "description": ""
+  "description": "",
+  "imports": {
+    "#mk": "./mk.js"
+  },
+  "dependencies": {
+    "glob": "^11.0.3"
+  }
 }

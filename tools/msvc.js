@@ -1,12 +1,14 @@
 import fs from 'node:fs';
 import { posix as path } from 'node:path';
-import child_process from 'node:child_process';
-import { changeExtension } from "../utils.js";
+import { execSync } from 'node:child_process';
+import { run, ensureArray, changeExtension } from "../utils.js";
 
+// Expand windows style environment variables
 function expandEnvVars(str) {
   return str.replace(/%([^%]+)%/g, (_, key) => process.env[key] || `%${key}%`);
 }
 
+// Work out default install location for msvc
 function resolveMsvcLocation()
 {
     // Look for vcvars
@@ -25,132 +27,184 @@ function resolveMsvcLocation()
     return null;
 }
 
-
-/*
-export class msvc
+let msvc_env;
+function captureMsvcEnvironment()
 {
-    #env = null
+    if (msvc_env)
+        return msvc_env;
 
-    get env()
+    // Resolve location
+    var vcvars = resolveMsvcLocation();
+    if (vcvars == null)
+        throw new Error("Unable to resolve VC vars location");
+
+    // Run it
+    try 
     {
-        if (!this.#env)
+        // Run vcvars and capture resulting environment
+        let output = execSync(`"${vcvars}" x86_x64 && echo --- ENV --- && set`, 
+        { 
+            encoding: "utf-8" 
+        });
+
+        // Get just the environment bit and split into lines
+        output = output.split("--- ENV ---", 2)[1].replace("\r\n", "\n")
+        msvc_env = {};
+        for (let line of output.split("\n"))
         {
-            // Resolve location
-            var vcvars = resolveMsvcLocation();
-            if (vcvars == null)
-                throw new Error("Unable to resolve VC vars location");
-
-            // Run it
-            try 
-            {
-                // Run vcvars and capture resulting environment
-                let output = child_process.execSync(`"${vcvars}" x86_x64 && echo --- ENV --- && set`, 
-                { 
-                    encoding: "utf-8" 
-                });
-
-                // Get just the environment bit and split into lines
-                output = output.split("--- ENV ---", 2)[1].replace("\r\n", "\n")
-
-                this.#env = {};
-                for (let line of output.split("\n"))
-                {
-                    let parts = line.split("=", 2);
-                    if (parts.length == 2)
-                        this.#env[parts[0]] = parts[1];
-                }
-            } 
-            catch (error) 
-            {
-                throw new Error(`Unable to capture VC environment - ${error.message}`);
-            }
+            let parts = line.split("=", 2);
+            if (parts.length == 2)
+               msvc_env[parts[0]] = parts[1].trim();
         }
 
-        return this.#env;
+        // Done
+        return msvc_env;
+    } 
+    catch (error) 
+    {
+        throw new Error(`Unable to capture VC environment - ${error.message}`);
     }
 }
-*/
 
-export default function()
+
+export let msvc =
 {
-    // Create defaults
-    this.default({
+    // Compiles a file
+    // opts.input - the file to compile (required)
+    // opts.output - the generated .obj file (defaults to input renamed to .obj)
+    // opts.pdb - the generated .pdb file (defaults to output directory of .obj)
+    // opts.warningLevel - compiler warning level (defaults to 1)
+    // opts.define - an array of preprocessor definitions
+    // opts.includePath - an array of include paths
+    // opts.debug - true to if this is debug build (default = true)
+    // opts.msvcrt - runtime library to use (default = "MD")
+    // opts.otherArgs - an array of other command line args
+    // opts.env - additional environment variables
+    // opts.cwd - current working directory
+    compile(opts)
+    {
+        if (!opts.input)
+            throw new Error("'input' file option not specified");
 
-        // Default static vars
-        projectName: path.basename(this.vars.home),
-        projectKind: "exe",
-        srcdir: ".",
-        objdir: "./build/$(config)/obj",
-        outdir: "./build/$(config)/out",
-        msvcrt: "MD",
-        targetName: "$(projectName).$(targetExtension)",
-        targetFullName: "$(outdir)/$(targetName)",
-        defines: [],
-        includePath: [],
-        cFlags: [],
-        cppFlags: [],
-        warningLevel: 1,
-        charset: "wchar_t",
+        // Resolve output file
+        let out = opts.output ?? changeExtension(opts.input, "obj");
 
-        // Object files
-        objectFiles: () => this.glob("$(srcdir)/**/*.{c,cpp}").map(x => path.join(`$(objdir)`, changeExtension(x, ".obj"))),
+        // Resolve pdb file or directory
+        let pdb = opts.pdb;
+        if (!opts.pdb)
+        {
+            pdb = path.dirname(out) ?? ".";
+            if (!pdb.endsWith("/"))
+                pdb += "/";
+        }
 
-        // Map project kind to default file extension
-        targetExtension: () => {
-            var projKind = this.resolve("projectKind");
-            switch (projKind)
-            {
-                case "winexe": return "exe";
-                case "exe": return "exe";
-                case "dll": return "dll";
-                case "so": return "so";
-                case "lib": return "lib";
-            }
-            throw new Error(`Unknown project kind ${projKind}`);
-        },
-
-        // Build common flags
-        commonFlags: () => [
-            "/nologo",
-            "/Zi",
-            "/Fd$(outdir)",
-            "/showIncludes",
-            "/W$(warningLevel)",
-            "/Zc:$(charset)",
-            "/FC",
-            this.flatten(this.resolve("defines")).map(x => `/d,${x}`),
-            this.flatten(this.resolve("includePath")).map(x => `/I,${x}`),
-            this.resolve("config") == "debug"
-                ? [ "/D_DEBUG", "/Od", "/$(msvcrt)d" ] 
-                : [ "/DNDEBUG", "/O2", "/Oi", "/$(msvcrt)" ],
-        ],
-    });
-
-    // Compile C file rule
-    this.rule({
-        target: "$(objdir)/*.obj",
-        source: "$(srcdir)/$(1).c",
-        depends: () => this.readDeps("$(objdir)/$(1).d"),
-        action: [
-            "cl $(commonFlags) $(cFlags) /c $(source) /Fo $(target)",
+        // Setup args
+        let cmdargs = [
+            `cl.exe`,
+            `/nologo`,
+            `/Zi`,
+            `/Fd${pdb}`,
+            `/showIncludes`,
+            `/W${opts.warningLevel ?? 1}`,
+            `/Zc:wchar_t`,
+            `/FC`,
+            ...ensureArray(opts.define).map(x => `/d,${x}`),
+            ...ensureArray(opts.includePath).map(x => `/I,${x}`),
+            ...(opts.debug ?? true)
+                ? [ "/D_DEBUG", "/Od", `/${opts.msvcrt ?? "MD"}d` ] 
+                : [ "/DNDEBUG", "/O2", "/Oi", `/${opts.msvcrt ?? "MD"}` ],
+            ...ensureArray(opts.otherArgs),
+            '/c', opts.input,
+            `/Fo${out}`,
         ]
-    });
 
-    this.rule({
-        target: "$(objdir)/*.obj",
-        source: "$(srcdir)/$(1).cpp",
-        depends: () => this.readDeps("$(objdir)/$(1).d"),
-        action: [
-            "cl $(commonFlags) $(cppFlags) /c $(source) /Fo $(target)",
-        ]
-    });
+        // Setup environment
+        let env = Object.assign(captureMsvcEnvironment(), opts.env);
 
-    // Link rule
-    this.rule({
-        target: "$(outfile)",
-        source: [ this.resolve("objectFiles"), this.resolve("libFiles") ],
-        action: [
-            "link $(source) -o $(target) $(linkflags)"
+        // Run it
+        return run(cmdargs, {
+            env,
+            shell: false,
+            cwd: opts.cwd,
+        });
+    },
+
+    // Link .obj files into a .exe or .dll
+    // opts.input - array of object files
+    // opts.output - the target .exe or .dll file name
+    // opts.debug - true for debug build (default = true)
+    // opts.libs - array of additional libraries to link with
+    // opts.dll - generate a dll instead of .exe (default = true unless output ends with .exe)
+    // opts.debug - true to if this is debug build (default = true)
+    // opts.otherArgs - an array of other command line args
+    // opts.env - additional environment variables
+    // opts.cwd - current working directory
+    link(opts)
+    {
+        if (!opts.input)
+            throw new Error("'input' option not specified");
+        if (!opts.output)
+            throw new Error("'output' option not specified");
+
+        // Setup args
+        let cmdargs = [
+            `link.exe`,
+            `/nologo`,
+            `/DEBUG`,
+            ...(opts.debug ?? true)
+                ? [  ] 
+                : [ "/OPT:REF", "/OPT:ICF" ],
+            ...ensureArray(opts.libs),
+            ...ensureArray(opts.input),
+            (opts.dll ?? !opts.output.endsWith(".exe")) ? "/DLL" : null,
+            ...ensureArray(opts.otherArgs),
+            `/out:${opts.output}`,
+            `/pdb:${changeExtension(opts.output, ".pdb")}`
         ]
-    });
+
+        // Setup environment
+        let env = Object.assign(captureMsvcEnvironment(), opts.env);
+
+        // Run it
+        return run(cmdargs, {
+            env,
+            shell: false,
+            cwd: opts.cwd,
+        });
+    },
+
+    // Create a library
+    // opts.input - array of object files
+    // opts.output - the target .lib file
+    // opts.otherArgs - an array of other command line args
+    // opts.env - additional environment variables
+    // opts.cwd - current working directory
+    archive(opts)
+    {
+        if (!opts.input)
+            throw new Error("'input' option not specified");
+        if (!opts.output)
+            throw new Error("'output' option not specified");
+
+        // Setup args
+        let cmdargs = [
+            `lib.exe`,
+            `/nologo`,
+            ...ensureArray(opts.input),
+            ...ensureArray(opts.otherArgs),
+            `/out:${opts.output}`,
+        ]
+
+        // Setup environment
+        let env = Object.assign(captureMsvcEnvironment(), opts.env);
+
+        // Run it
+        return run(cmdargs, {
+            env,
+            shell: false,
+            cwd: opts.cwd,
+        });
+    }
 }
+
+

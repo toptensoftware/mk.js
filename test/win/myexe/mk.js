@@ -13,3 +13,5 @@ export default async function()
 
     console.log(this.expand("$(objectFiles)"));
 }
+
+

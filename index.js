@@ -1,8 +1,10 @@
 import url from "node:url";
-import { posix as path } from "node:path";
+import { posix as path, default as ospath } from "node:path";
 import { globSync } from "glob";
-import { resolve, quotedJoin } from "./utils.js";
+import { run, resolve, quotedJoin } from "./utils.js";
+import { msvc } from "./tools/msvc.js";
     
+    /*
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 
 let mkfile = path.resolve("./mk.js");
@@ -207,5 +209,40 @@ let proj = {
 
 await mk.default.call(proj);
 
+*/
+
+/*
+await msvc.compile({
+    input: "test.c",
+    output: "./build/obj/test.obj",
+});
 
 
+await msvc.archive({
+    input: "./build/obj/test.obj",
+    output: "./build/bin/test.lib",
+});
+*/
+
+/*
+let x = {
+    define(key, value)
+    {
+        if (typeof(value) === 'function')
+        {
+            this[key] = {
+                toString: value,
+            }
+        }
+        else
+        {
+            this[key] = value;
+        }
+    }
+}
+
+x.define("a", "aval");
+x.define("b", () => `--${x.a}==`);
+
+console.log(`${x.b}`);
+*/

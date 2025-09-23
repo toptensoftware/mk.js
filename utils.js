@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { posix as path, default as ospath } from 'node:path';
 import { spawn } from 'node:child_process';
 
@@ -29,12 +30,35 @@ export function quotedJoin(arr)
 {
     if (Array.isArray(arr))
     {
-        return arr.map(x => /\s/.test(x) ? `"${x}"` : x).join(" ");
+        return arr.map(x => /\s/.test(x) ? `"${x.replace(/\"/g, "\"\"")}"` : x).join(" ");
     }
     else
     {
         return "" + arr;
     }
+}
+
+export function quotedSplit(str)
+{
+    const rx = /"((?:[^"]|"")*)"|(\S+)/g;
+    const result = [];
+    let match;
+
+    while ((match = rx.exec(str)) !== null) 
+    {
+        if (match[1] !== undefined) 
+        {
+            // Inside quotes: replace "" with "
+            result.push(match[1].replace(/""/g, '"'));
+        } 
+        else 
+        {
+            // Unquoted token
+            result.push(match[2]);
+        }
+    }
+
+    return result;
 }
 
 export async function run(cmdargs, opts)
@@ -150,4 +174,94 @@ export async function run(cmdargs, opts)
 
         return fn;
     }
+}
+
+export function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export function fileTime(filename)
+{
+    try 
+    {
+        let s = fs.statSync(filename);
+        return s.mtimeMs;
+    } 
+    catch (e) 
+    {
+        if (e.code !== 'ENOENT')
+            throw e;
+        return 0;
+    }
+}
+
+export function toString(val)
+{
+    // Nullish?
+    if (val === null || val === undefined)
+        return "";
+
+    // Join arrays
+    if (Array.isArray(val))
+        return quotedJoin(val.flat(Infinity).map(x => toString(x)));
+
+    // Convert types
+    switch (typeof(val))
+    {
+        case 'string':
+            return val;
+
+        case 'number':
+        case 'boolean':
+            return val.toString();
+    }
+
+    throw new Error(`Cannot convert value to string: ${val}`);  
+}
+
+export function toBool(val)
+{
+    // Nullish?
+    if (val === null || val === undefined)
+        return false;
+
+    // Eval
+    switch (typeof(val))
+    {
+        case 'boolean':
+            return val;
+
+        case 'number':
+            return val != 0;
+
+        case 'string':
+            return 
+                val.trim().toLowerCase() === "true" || 
+                val.trim().toLowerCase() === "yes" ||
+                val.trim() === "1";
+
+        case 'object':
+            if (Array.isArray(val))
+                return val.length > 0;
+            return true;
+    }
+
+    throw new Error(`Cannot convert value to boolean: ${val}`); 
+}
+
+export function toArray(val)
+{
+    // Nullish?
+    if (val === null || val === undefined)
+        return [];
+
+    // String?
+    if (typeof(val) === "string")
+        return quotedSplit(val);
+
+    // Wrap non-arrays
+    if (Array.isArray(val))
+        return val;
+
+    return [ val ];
 }

@@ -6,12 +6,8 @@ export default async function ()
     // Define variables
     this.define({
         config: "debug",
-    });
-
-    this.rule({
-        output: "$(outdir)/test.exe",
-        input: "$(objdir)/test.obj",
-        action: "touch test.exe",
+        objFiles: [ "$(objdir)/test.obj" ],
+        projectKind: "exe",
     });
 
     this.rule({

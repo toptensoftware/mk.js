@@ -285,11 +285,11 @@ export class Project extends EventEmitter
 
     // Find all rules that can produce a given file
     // filename should be fully expanded
-    findrules(filename)
+    findRules(filename)
     {
         let rules = [];
 
-        // Look for explicit ruls
+        // Look for explicit rules
         let haveAction = false;
         let haveInferredRules = false;
         for (let rule of this.rules)
@@ -308,49 +308,49 @@ export class Project extends EventEmitter
         }
 
         // If have an action, don't use inferred rules
-        if (haveAction || !haveInferredRules)
-            return rules;
-
-        // Create inferred rules
-        for (let rule of this.rules)
+        if (!haveAction && haveInferredRules)
         {
-            // Match input pattern
-            let pattern = this.evalString(rule.output);
-
-            // Inferred rules?
-            if (pattern.indexOf("%") >= 0)
+            // Create inferred rules
+            for (let rule of this.rules)
             {
-                let regex = new RegExp("^" + escapeRegExp(pattern).replace(/\%/g, "(.+)") + "$");
-                let m = regex.exec(filename);
-                if (!m)
-                    continue;
-                    
-                // Matched - infer rule
-                let inferred;
-                if (rule.infer)
-                {
-                    // Call infer function to generate new rule
-                    inferred = rule.infer(m[1], this);
-                }
-                else
-                {
-                    // Infer rule from pattern
-                    inferred = {
-                        output: filename,
-                        input: this.evalArray(rule.input).map(x => toString(x).replace(/\%/g, () => m[1])),
-                        action: rule.action,
-                        mkdir: rule.mkdir,
-                    }
-                }
+                // Match input pattern
+                let pattern = this.evalString(rule.output);
 
-                // Add to list
-                if (inferred)
+                // Inferred rules?
+                if (pattern.indexOf("%") >= 0)
                 {
-                    inferred.inferredFrom = rule;
-                    rules.push(inferred);
+                    let regex = new RegExp("^" + escapeRegExp(pattern).replace(/\%/g, "(.+)") + "$");
+                    let m = regex.exec(filename);
+                    if (!m)
+                        continue;
+                        
+                    // Matched - infer rule
+                    let inferred;
+                    if (rule.infer)
+                    {
+                        // Call infer function to generate new rule
+                        inferred = rule.infer(m[1], this);
+                    }
+                    else
+                    {
+                        // Infer rule from pattern
+                        inferred = Object.assign({}, rule, {
+                            output: filename,
+                            input: this.evalArray(rule.input).map(x => toString(x).replace(/\%/g, () => m[1])),
+                        });
+                    }
+
+                    // Add to list
+                    if (inferred)
+                    {
+                        inferred.inferredFrom = rule;
+                        rules.push(inferred);
+                    }
                 }
             }
         }
+
+        rules = rules.filter(x => x.condition == undefined || this.evalBool(x.condition));
 
         return rules;
     }
@@ -368,7 +368,7 @@ export class Project extends EventEmitter
     // filename should be expanded
     canBuild(filename)
     {
-        var rules = this.findrules(filename);
+        var rules = this.findRules(filename);
         if (rules.length > 0)
             return true;
         return this.mtime(filename) != 0;
@@ -396,7 +396,7 @@ export class Project extends EventEmitter
         console.log(`Building ${target}`);
 
         // Find rules for this file
-        let rules = this.findrules(target);
+        let rules = this.findRules(target);
 
         // The final MRule ("merged rule")
         let finalMRule = {
@@ -427,13 +427,13 @@ export class Project extends EventEmitter
 
                 // Combine inputs
                 // Action rule inputs go at the start
-                mrule.input.unshift(...rule.input.map(x => self.eval(x)));
+                mrule.input.unshift(...rule.input.map(x => self.eval(x)).flat(Infinity));
             }
             else
             {
                 // Combine inputs
                 // Non-action rule inputs go at the end
-                mrule.input.push(...rule.input.map(x => self.eval(x)));
+                mrule.input.push(...rule.input.map(x => self.eval(x)).flat(Infinity));
             }
 
             // Add to list of sub rules

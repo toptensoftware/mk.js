@@ -30,6 +30,7 @@ export function quotedJoin(arr)
 {
     if (Array.isArray(arr))
     {
+        arr = arr.flat(Infinity);
         return arr.map(x => /\s/.test(x) ? `"${x.replace(/\"/g, "\"\"")}"` : x).join(" ");
     }
     else

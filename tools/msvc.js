@@ -67,150 +67,10 @@ function captureMsvcEnvironment()
 }
 
 
-export let msvc =
-{
-    // Compiles a file
-    // opts.input - the file to compile (required)
-    // opts.output - the generated .obj file (defaults to input renamed to .obj)
-    // opts.pdb - the generated .pdb file (defaults to output directory of .obj)
-    // opts.warningLevel - compiler warning level (defaults to 1)
-    // opts.define - an array of preprocessor definitions
-    // opts.includePath - an array of include paths
-    // opts.debug - true to if this is debug build (default = true)
-    // opts.msvcrt - runtime library to use (default = "MD")
-    // opts.otherArgs - an array of other command line args
-    // opts.env - additional environment variables
-    // opts.cwd - current working directory
-    compile(opts)
-    {
-        if (!opts.input)
-            throw new Error("'input' file option not specified");
-
-        // Resolve output file
-        let out = opts.output ?? changeExtension(opts.input, "obj");
-
-        // Resolve pdb file or directory
-        let pdb = opts.pdb;
-        if (!opts.pdb)
-        {
-            pdb = path.dirname(out) ?? ".";
-            if (!pdb.endsWith("/"))
-                pdb += "/";
-        }
-
-        // Setup args
-        let cmdargs = [
-            `cl.exe`,
-            `/nologo`,
-            `/Zi`,
-            `/Fd${pdb}`,
-            `/showIncludes`,
-            `/W${opts.warningLevel ?? 1}`,
-            `/Zc:wchar_t`,
-            `/FC`,
-            ...ensureArray(opts.define).map(x => `/d,${x}`),
-            ...ensureArray(opts.includePath).map(x => `/I,${x}`),
-            ...(opts.debug ?? true)
-                ? [ "/D_DEBUG", "/Od", `/${opts.msvcrt ?? "MD"}d` ] 
-                : [ "/DNDEBUG", "/O2", "/Oi", `/${opts.msvcrt ?? "MD"}` ],
-            ...ensureArray(opts.otherArgs),
-            '/c', opts.input,
-            `/Fo${out}`,
-        ]
-
-        // Setup environment
-        let env = Object.assign(captureMsvcEnvironment(), opts.env);
-
-        // Run it
-        return run(cmdargs, {
-            env,
-            shell: false,
-            cwd: opts.cwd,
-        });
-    },
-
-    // Link .obj files into a .exe or .dll
-    // opts.input - array of object files
-    // opts.output - the target .exe or .dll file name
-    // opts.debug - true for debug build (default = true)
-    // opts.libs - array of additional libraries to link with
-    // opts.dll - generate a dll instead of .exe (default = true unless output ends with .exe)
-    // opts.debug - true to if this is debug build (default = true)
-    // opts.otherArgs - an array of other command line args
-    // opts.env - additional environment variables
-    // opts.cwd - current working directory
-    link(opts)
-    {
-        if (!opts.input)
-            throw new Error("'input' option not specified");
-        if (!opts.output)
-            throw new Error("'output' option not specified");
-
-        // Setup args
-        let cmdargs = [
-            `link.exe`,
-            `/nologo`,
-            `/DEBUG`,
-            ...(opts.debug ?? true)
-                ? [  ] 
-                : [ "/OPT:REF", "/OPT:ICF" ],
-            ...ensureArray(opts.libs),
-            ...ensureArray(opts.input),
-            (opts.dll ?? !opts.output.endsWith(".exe")) ? "/DLL" : null,
-            ...ensureArray(opts.otherArgs),
-            `/out:${opts.output}`,
-            `/pdb:${changeExtension(opts.output, ".pdb")}`
-        ]
-
-        // Setup environment
-        let env = Object.assign(captureMsvcEnvironment(), opts.env);
-
-        // Run it
-        return run(cmdargs, {
-            env,
-            shell: false,
-            cwd: opts.cwd,
-        });
-    },
-
-    // Create a library
-    // opts.input - array of object files
-    // opts.output - the target .lib file
-    // opts.otherArgs - an array of other command line args
-    // opts.env - additional environment variables
-    // opts.cwd - current working directory
-    archive(opts)
-    {
-        if (!opts.input)
-            throw new Error("'input' option not specified");
-        if (!opts.output)
-            throw new Error("'output' option not specified");
-
-        // Setup args
-        let cmdargs = [
-            `lib.exe`,
-            `/nologo`,
-            ...ensureArray(opts.input),
-            ...ensureArray(opts.otherArgs),
-            `/out:${opts.output}`,
-        ]
-
-        // Setup environment
-        let env = Object.assign(captureMsvcEnvironment(), opts.env);
-
-        // Run it
-        return run(cmdargs, {
-            env,
-            shell: false,
-            cwd: opts.cwd,
-        });
-    }
-}
-
-
 export default async function() {
 
-    this.define({
+    // Default variables
+    this.default({
         srcdir: ".",
         projectKind: "exe",
         objdir: "./build/$(config)/obj",
@@ -240,41 +100,56 @@ export default async function() {
         }
     });
 
+    // Callback lambda to compile a c or c++ file
+    let compile = () => ({
+        cmdargs: [
+            `@cl.exe`,
+            `/nologo`,
+            `/Zi`,
+            `/Fd$(pdb)`,
+            `/showIncludes`,
+            `/W$(warningLevel)`,
+            `/Zc:wchar_t`,
+            `/FC`,
+            ...this.resolveArray("define").map(x => `/d,${x}`),
+            ...this.resolveArray("includePath").map(x => `/I,${x}`),
+            ...(this.resolveString("config") == "debug")
+                ? [ "/D_DEBUG", "/Od", `/$(msvcrt)d` ] 
+                : [ "/DNDEBUG", "/O2", "/Oi", `/$(msvcrt)` ],
+            ...this.resolveArray("msvc_cl_args"),
+            '/c', "$(ruleFirstInput)",
+            `/Fo$(ruleOutput)`,
+        ],
+        opts: {
+            env: captureMsvcEnvironment(),
+        }
+    })
+
+    // Compile C Code
     this.rule({
         output: "$(objdir)/%.obj",
         input: "$(srcdir)/%.c",
         name: "compile",
         mkdir: true,
-        action: () => ({
-            cmdargs: [
-                `@cl.exe`,
-                `/nologo`,
-                `/Zi`,
-                `/Fd$(pdb)`,
-                `/showIncludes`,
-                `/W$(warningLevel)`,
-                `/Zc:wchar_t`,
-                `/FC`,
-                ...this.resolveArray("define").map(x => `/d,${x}`),
-                ...this.resolveArray("includePath").map(x => `/I,${x}`),
-                ...(this.resolveString("config") == "debug")
-                    ? [ "/D_DEBUG", "/Od", `/$(msvcrt)d` ] 
-                    : [ "/DNDEBUG", "/O2", "/Oi", `/$(msvcrt)` ],
-                ...this.resolveArray("msvc_c_args"),
-                '/c', "$(ruleFirstInput)",
-                `/Fo$(ruleOutput)`,
-            ],
-            opts: {
-                env: captureMsvcEnvironment(),
-            }
-        })
+        action: compile,
     });
 
+    // Compile C++ Code
+    this.rule({
+        output: "$(objdir)/%.obj",
+        input: "$(srcdir)/%.cpp",
+        name: "compile",
+        mkdir: true,
+        action: compile,
+    });
+
+    // Link (.exe or .dll)
     this.rule({
         output: "$(outputFile)",
         input: () => this.resolveArray("objFiles"),
         name: "link",
         mkdir: true,
+        condition: () => !this.resolveString("projectKind").match(/lib|a/),
         action: () => ({
             cmdargs: [
                 `@link.exe`,
@@ -285,10 +160,31 @@ export default async function() {
                     : [ "/OPT:REF", "/OPT:ICF" ],
                 ...this.resolveArray("libs"),
                 ...this.resolveArray("ruleInput"),
-                this.resolveString("ruleTarget").endsWith(".exe") ? null : "/DLL",
+                ...this.resolveString("ruleOutput").endsWith(".exe") ? [] : [ "/DLL" ],
                 ...this.resolveArray("msvc_link_flags"),
                 `/out:$(ruleOutput)`,
                 `/pdb:${changeExtension(this.resolveString("ruleOutput"), ".pdb")}`
+            ],
+            opts: {
+                env: captureMsvcEnvironment(),
+            }
+        })
+    });
+
+    // Create library (.lib)
+    this.rule({
+        output: "$(outputFile)",
+        input: () => this.resolveArray("objFiles"),
+        name: "lib",
+        mkdir: true,
+        condition: () => !!this.resolveString("projectKind").match(/lib|a/),
+        action: () => ({
+            cmdargs: [
+                `@lib.exe`,
+                `/nologo`,
+                ...this.resolveArray("ruleInput"),
+                ...this.resolveArray("msvc_lib_flags"),
+                `/out:$(ruleOutput)`,
             ],
             opts: {
                 env: captureMsvcEnvironment(),

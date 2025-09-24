@@ -11,44 +11,60 @@ function ruleToString(rule)
 
 class MockProject extends Project
 {
+    constructor()
+    {
+        super();
+        this.on("willbuildTarget", (filename, mrule) => {
+            this.results.push(ruleToString(mrule));
+        });
+        this.on("skipFile", (filename) => {
+            this.results.push(`skipping ${filename}`);
+        });
+        this.filetimes = {
+            "test.c": 1000,
+            "up-to-date.c": 1000,
+            "up-to-date.obj": 2000,
+            "out-of-date.c": 2000,
+            "out-of-date.obj": 1000,
+        }
+    }
     mtime(filename)
     {
-        if (filename === "test.c")
-            return 1000;
-        return 0;
-    }   
+        return this.filetimes[filename] ?? 0;
+    }
+    results = [];
 }
 
-test("no build rule, file doesn't exist", (t) =>
+test("no rules, file doesn't exist", async (t) =>
 {
     let proj = new MockProject();
-    assert.throws(() => proj.buildFile("test.exe"), /No rule/);
+    await assert.rejects(async () => proj.buildTarget("test.exe"), /No rule/);
 });
 
-test("no build rule, file does exist", (t) =>
+test("no rules, file does exist", async (t) =>
 {
     let proj = new MockProject();
-    let plan = proj.generatePlan("test.c");
-    assert.deepEqual(plan, []);
+    assert.equal(await proj.buildTarget("test.c"), false);
+    assert.deepEqual(proj.results, []);
 });
 
-test("simple rule", (t) =>
+test("simple rule", async (t) =>
 {
     let proj = new MockProject();
     proj.rule({
         output: "test.obj",
         input: "test.c",
-        action: function compile(rule) { }
+        action: function compileC() {},
     }); 
 
-    let plan = proj.generatePlan("test.obj");
+    assert.equal(await proj.buildTarget("test.obj"), true);
 
-    assert.deepEqual(plan.map(ruleToString), [
-        'test.obj : test.c : compile()',
+    assert.deepEqual(proj.results, [
+        'test.obj : test.c : compileC()',
     ]);
 });
 
-test("chained rules", (t) =>
+test("chained rules", async (t) =>
 {
     let proj = new MockProject();
     proj.rule({
@@ -62,15 +78,15 @@ test("chained rules", (t) =>
         action: function link(rule) { }
     }); 
 
-    let plan = proj.generatePlan("test.exe");
+    assert.equal(await proj.buildTarget("test.exe"), true);
 
-    assert.deepEqual(plan.map(ruleToString), [
+    assert.deepEqual(proj.results, [
         'test.obj : test.c : compile()',
         'test.exe : test.obj : link()',
     ]);
 });
 
-test("inferred rule", (t) =>
+test("inferred rule", async (t) =>
 {
     let proj = new MockProject();
     proj.rule({
@@ -84,15 +100,15 @@ test("inferred rule", (t) =>
         action: function link(rule) { }
     }); 
 
-    let plan = proj.generatePlan("test.exe");
+    assert.equal(await proj.buildTarget("test.exe"), true);
 
-    assert.deepEqual(plan.map(ruleToString), [
+    assert.deepEqual(proj.results, [
         'test.obj : test.c : compile()',
         'test.exe : test.obj : link()',
     ]);
 });
 
-test("multiple inferred rule", (t) =>
+test("choose from multiple inferred rules", async (t) =>
 {
     let proj = new MockProject();
     proj.rule({
@@ -106,10 +122,94 @@ test("multiple inferred rule", (t) =>
         action: function compileCPP(rule) { }
     }); 
 
-    let plan = proj.generatePlan("test.obj");
+    assert.equal(await proj.buildTarget("test.obj"), true);
 
-    assert.deepEqual(plan.map(ruleToString), [
+    assert.deepEqual(proj.results, [
         'test.obj : test.c : compileC()',
+    ]);
+});
+
+test("conflicting multiple inferred rules", async (t) =>
+{
+    let proj = new MockProject();
+    proj.rule({
+        output: "%.obj",
+        input: "%.c",
+        action: function compileC(rule) { }
+    }); 
+    proj.rule({
+        output: "%.obj",
+        input: "%.c",
+        action: function compileC(rule) { }
+    }); 
+
+    await assert.rejects(async() => await proj.buildTarget("test.obj"), /Multiple inferred rules/);
+});
+
+test("build if output missing", async (t) =>
+{
+    let proj = new MockProject();
+    proj.rule({
+        output: "missing.obj",
+        input: "test.c",
+        action: function compileC(rule) { }
+    }); 
+
+    await proj.buildTarget("missing.obj");
+
+    assert.deepEqual(proj.results, [
+        "missing.obj : test.c : compileC()",
+    ]);
+});
+
+test("skip if up to date", async (t) =>
+{
+    let proj = new MockProject();
+    proj.rule({
+        output: "up-to-date.obj",
+        input: "up-to-date.c",
+        action: function compileC(rule) { }
+    }); 
+
+    await proj.buildTarget("up-to-date.obj");
+
+    assert.deepEqual(proj.results, [
+        'skipping up-to-date.obj',
+    ]);
+});
+
+test("build if out of date", async (t) =>
+{
+    let proj = new MockProject();
+    proj.rule({
+        output: "out-of-date.obj",
+        input: "out-of-date.c",
+        action: function compileC(rule) { }
+    }); 
+
+    await proj.buildTarget("out-of-date.obj");
+
+    assert.deepEqual(proj.results, [
+        "out-of-date.obj : out-of-date.c : compileC()",
+    ]);
+});
+
+
+test("only build target once", async (t) =>
+{
+    let proj = new MockProject();
+    proj.rule({
+        output: "out-of-date.obj",
+        input: "out-of-date.c",
+        action: function compileC(rule) { }
+    }); 
+
+    await proj.buildTarget("out-of-date.obj");
+    await proj.buildTarget("out-of-date.obj");
+    await proj.buildTarget("out-of-date.obj");
+
+    assert.deepEqual(proj.results, [
+        "out-of-date.obj : out-of-date.c : compileC()",
     ]);
 });
 

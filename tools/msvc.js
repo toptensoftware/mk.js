@@ -208,3 +208,91 @@ export let msvc =
 }
 
 
+export default async function() {
+
+    this.define({
+        srcdir: ".",
+        projectKind: "exe",
+        objdir: "./build/$(config)/obj",
+        outdir: "./build/$(config)/bin",
+        outputFile: "$(outdir)/$(name).$(outputExtension)",
+        pdb: () => path.dirname(this.resolve("ruleOutput")) + "/",
+        warningLevel: 1,
+        define: [],
+        includePath: [],
+        msvcrt: "MD",
+        outputExtension: () => {
+            let projKind = this.resolveString("projectKind")
+            switch (projKind)
+            {
+                case "exe": 
+                    return "exe";
+
+                case "so":
+                case "dll":
+                    return "dll";
+                    
+                case "lib":
+                case "a":
+                    return "lib";
+            }
+            throw new Error(`Unknown project kind: ${projKind}.  Expected 'exe', 'so'/'dll' or 'lib'/'a'"`)
+        }
+    });
+
+    this.rule({
+        output: "$(objdir)/%.obj",
+        input: "$(srcdir)/%.c",
+        name: "compile",
+        mkdir: true,
+        action: () => ({
+            cmdargs: [
+                `@cl.exe`,
+                `/nologo`,
+                `/Zi`,
+                `/Fd$(pdb)`,
+                `/showIncludes`,
+                `/W$(warningLevel)`,
+                `/Zc:wchar_t`,
+                `/FC`,
+                ...this.resolveArray("define").map(x => `/d,${x}`),
+                ...this.resolveArray("includePath").map(x => `/I,${x}`),
+                ...(this.resolveString("config") == "debug")
+                    ? [ "/D_DEBUG", "/Od", `/$(msvcrt)d` ] 
+                    : [ "/DNDEBUG", "/O2", "/Oi", `/$(msvcrt)` ],
+                ...this.resolveArray("msvc_c_args"),
+                '/c', "$(ruleFirstInput)",
+                `/Fo$(ruleOutput)`,
+            ],
+            opts: {
+                env: captureMsvcEnvironment(),
+            }
+        })
+    });
+
+    this.rule({
+        output: "$(outputFile)",
+        input: () => this.resolveArray("objFiles"),
+        name: "link",
+        mkdir: true,
+        action: () => ({
+            cmdargs: [
+                `@link.exe`,
+                `/nologo`,
+                `/DEBUG`,
+                ...(this.resolveString("config") == "debug")
+                    ? [  ] 
+                    : [ "/OPT:REF", "/OPT:ICF" ],
+                ...this.resolveArray("libs"),
+                ...this.resolveArray("ruleInput"),
+                this.resolveString("ruleTarget").endsWith(".exe") ? null : "/DLL",
+                ...this.resolveArray("msvc_link_flags"),
+                `/out:$(ruleOutput)`,
+                `/pdb:${changeExtension(this.resolveString("ruleOutput"), ".pdb")}`
+            ],
+            opts: {
+                env: captureMsvcEnvironment(),
+            }
+        })
+    });
+}

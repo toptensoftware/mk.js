@@ -1,17 +1,21 @@
-import { msvc } from "#mk";
-
-export default async function()
+export default async function ()
 {
-    this.use(msvc);
-    this.vars.projectKind = "lib";
+    // MSVC tool chain
+    await this.use("msvc");
 
-    this.vars.test = () => [ 'a', 'b', 'c'];
-    this.vars.other = [ 'x', 'y', 'z'];
-    this.vars.result = [ this.vars.test, this.vars.other ];
-    this.vars.defines = [ "_UNICODE", "_WINDOWS" ];
-    this.vars.includePath = [ "../blah", "../$(objdir)/whatever" ]
+    // Define variables
+    this.define({
+        config: "debug",
+    });
 
-    console.log(this.expand("$(objectFiles)"));
-}
+    this.rule({
+        output: "$(outdir)/test.exe",
+        input: "$(objdir)/test.obj",
+        action: "touch test.exe",
+    });
 
-
+    this.rule({
+        output: "default",
+        input: "$(outputFile)",
+    });
+};

@@ -63,8 +63,6 @@ export function quotedSplit(str)
 
 export async function run(cmdargs, opts)
 {   
-    console.log(JSON.stringify(cmdargs, null, 4));
-
     // Split cmdargs into cmd and args
     let cmd;
     let args;
@@ -98,6 +96,8 @@ export async function run(cmdargs, opts)
     if (opts.stderr)
         opts.stdio[2] = 'pipe';
 
+    console.log(`${opts.cwd ?? process.cwd()}$ ${quotedJoin(cmdargs)}`);
+
     return new Promise((resolve, reject) => {
 
         // Spawn process
@@ -123,16 +123,30 @@ export async function run(cmdargs, opts)
         child.on('exit', code => {
             chopStdout?.flush();
             chopStderr?.flush();
-            resolve(code);
+
+            if (code == 0 || opts.ignoreExitCode)
+            {
+                resolve(code);
+            }
+            else
+            {
+                reject(adornError(new Error(`command '${cmd}' exited with code ${code}`)));
+            }
         });
 
         // Error rejects the promise
         child.on('error', err => {
             chopStdout?.flush();
             chopStderr?.flush();
-            reject(err);
+            reject(adornError(err));
         });
 
+        // Attach info about a failed command to the error object
+        function adornError(err)
+        {
+            err.info = { cmdargs,  opts };
+            return err;
+        }
     });
 
     // Creates a function that when passed a sequence of 

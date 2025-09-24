@@ -1,10 +1,17 @@
-import { fileURLToPath } from 'node:url';
-import { fileTime, resolve, quotedJoin, escapeRegExp, toArray, toBool, toString } from "./utils.js";
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { posix as path, default as ospath } from "node:path";
+import { mkdirSync } from 'node:fs';
 
-export class Project
+import { run, fileTime, resolve, quotedJoin, escapeRegExp, toArray, toBool, toString, quotedSplit } from "./utils.js";
+import { EventEmitter } from 'node:events';
+
+const __dirname = ospath.dirname(fileURLToPath(import.meta.url));
+
+export class Project extends EventEmitter
 {
     constructor()
     {
+        super();
     }
 
     // Global variables used by this project and sub-projects
@@ -14,8 +21,7 @@ export class Project
     vars =  {}
 
     // Rules for this project
-    fileRules = [];
-    namedRules = new Map();
+    rules = [];
 
     // Load root level mk file
     async load(mkfile)
@@ -29,12 +35,12 @@ export class Project
 
         // Setup project variables
         this.vars.mkfile = absmkfile;
-        this.vars.projdir = path.dirname(absmkfile);
-        this.vars.projname = path.basename(this.vars.home);
+        this.vars.home = path.dirname(absmkfile);
+        this.vars.name = path.basename(this.vars.home);
 
         // Load and call module
-        let module = await import(url.pathToFileURL(absmkfile).href);
-        module.default.call(this);
+        let module = await import(pathToFileURL(absmkfile).href);
+        await module.default.call(this);
     }
 
     // Define local variables
@@ -59,21 +65,11 @@ export class Project
     rule(rule)
     {        
         // Rules must have either a name or an input pattern
-        if (!rule.name && !rule.output)
-            throw new Error("Rule must have either name or output");
+        if (!rule.output)
+            throw new Error("Rule must have output target name");
 
         // Add to list
-        if (rule.output)
-        {
-            this.fileRules.push(rule);
-        }
-        else
-        {
-            if (this.namedRules.has(rule.name))
-                throw new Error(`A named rule '${rule.name}' already defined`);
-
-            this.namedRules.set(rule.name, rule);
-        }
+        this.rules.push(rule);
 
         // Make sure input is set and is an array
         if (!rule.input)
@@ -148,7 +144,7 @@ export class Project
         }
 
         // Call it
-        let module = await import(url.pathToFileURL(loadPath).href);
+        let module = await import(pathToFileURL(loadPath).href);
         module.default.call(this);
     }
 
@@ -237,13 +233,13 @@ export class Project
                 // Note: currentRule variables are already expanded
                 switch (varname)
                 {
-                    case "output":
+                    case "ruleOutput":
                         return this.currentRule.output;
-                    case "input":
+                    case "ruleInput":
                         return this.currentRule.input;
-                    case "firstInput":
+                    case "ruleFirstInput":
                         return this.currentRule.input.length > 0 ? this.currentRule.input[0] : null;
-                    case "unqiueInput":
+                    case "ruleUniqueInput":
                         return [...new Set(this.currentRule.input)];
                 }
             }
@@ -289,14 +285,14 @@ export class Project
 
     // Find all rules that can produce a given file
     // filename should be fully expanded
-    findFileRules(filename)
+    findrules(filename)
     {
         let rules = [];
 
         // Look for explicit ruls
         let haveAction = false;
         let haveInferredRules = false;
-        for (let rule of this.fileRules)
+        for (let rule of this.rules)
         {
             // Match input pattern
             let pattern = this.evalString(rule.output);
@@ -316,7 +312,7 @@ export class Project
             return rules;
 
         // Create inferred rules
-        for (let rule of this.fileRules)
+        for (let rule of this.rules)
         {
             // Match input pattern
             let pattern = this.evalString(rule.output);
@@ -343,6 +339,7 @@ export class Project
                         output: filename,
                         input: this.evalArray(rule.input).map(x => toString(x).replace(/\%/g, () => m[1])),
                         action: rule.action,
+                        mkdir: rule.mkdir,
                     }
                 }
 
@@ -371,32 +368,39 @@ export class Project
     // filename should be expanded
     canBuild(filename)
     {
-        var rules = this.findFileRules(filename);
+        var rules = this.findrules(filename);
         if (rules.length > 0)
             return true;
         return this.mtime(filename) != 0;
     }
 
-    // Generate a plan to make a file
-    builtFiles = new Set();
-    async buildFile(filename)
+    builtFiles = new Map();
+
+    // Builds a file, returning 
+    // - true if the file has rules
+    // - false if the file has no rules but the file exists
+    // If no rules, but file doesn't exist an exception is thrown
+    async buildTarget(target)
     {
         let self = this;
 
         // Eval the filename
-        filename = this.evalString(filename);
+        target = this.evalString(target);
 
-        // If file has already been build, then don't need to redo it
-        if (this.builtFiles.has(filename))
-            return;
-        this.builtFiles.add(filename);
+        // If file has already been build, then don't need to redo it return
+        // the same result as last time
+        let r = this.builtFiles.get(target);
+        if (r != undefined)
+            return r;
+
+        console.log(`Building ${target}`);
 
         // Find rules for this file
-        let rules = this.findFileRules(filename);
+        let rules = this.findrules(target);
 
         // The final MRule ("merged rule")
         let finalMRule = {
-            output: filename,
+            output: target,
             action: null,
             input: [],
             rules: [],
@@ -418,7 +422,7 @@ export class Project
             if (rule.action)
             {
                 if (mrule.action)
-                    throw new Error(`Multiple rules define build actions for file '${filename}'`);
+                    throw new Error(`Multiple rules define build actions for file '${target}'`);
                 mrule.action = rule.action;
 
                 // Combine inputs
@@ -479,49 +483,129 @@ export class Project
             }
             else if (candidateRules.length > 1)
             {
-                throw new Error(`Multiple inferred rules match file '${filename}'`);
+                throw new Error(`Multiple inferred rules match file '${target}'`);
             }
         }
 
-        // If rules for this file, then check it exists
-        if (finalMRule.rules.length)
+        // If there are no rules for this file, then check it exists
+        if (finalMRule.rules.length == 0)
         {
-            if (this.mtime(filename) == 0)
+            if (this.mtime(target) == 0)
             {
-                throw new Error(`No rule to make file '${filename}'`);
+                throw new Error(`No rule for target '${target}'`);
             }
-            return;
+            this.builtFiles.set(target, false);
+            return false;
         }
 
         // Build all inputs
+        let outputTime = this.mtime(target);
+        let needsBuild = outputTime === 0;
         for (let input of finalMRule.input)
         {
-            await this.buildFile(input);
+            let inputHasRules = await this.buildTarget(input);
+
+            // Check input dependencies
+            if (!needsBuild)
+            {
+                let inputTime = this.mtime(input);
+                if ((inputTime === 0 && inputHasRules) || (inputTime > outputTime))
+                    needsBuild = true;
+            }
         }
 
-        // Build this file
-        if (finalMRule.action)
+        this.currentRule = finalMRule;
+        try
         {
-            this.currentRule = finalMRule;
-            try
+            if (!needsBuild)
             {
-                for (let action of finalMRule.action)
+                this.emit("skipFile", target, finalMRule);
+            }
+            else
+            {
+                this.emit("willbuildTarget", target, finalMRule)
+
+                // Make output directory?
+                if (finalMRule.rules.some(x => this.evalBool(x.mkdir)))
                 {
-                    if (typeof(action) === 'function')
+                    mkdirSync(path.dirname(target), { recursive: true });
+                }
+
+                // Build this file
+                if (finalMRule.action)
+                {
+                    for (let action of finalMRule.action)
                     {
-                        await action.call(this, finalMRule);
-                    }   
-                    else
-                    {
-                        throw new Error("not implemented - execute string actions");
+                        await this.exec(action);
                     }
                 }
-            }
-            finally
-            {
-                this.currentRule = null;
+
+                this.emit("didbuildTarget", target, finalMRule);
             }
         }
+        finally
+        {
+            this.currentRule = null;
+        }
+
+        this.builtFiles.set(target, true);
+        return true;
+    }
+
+    async exec(action, opts)
+    {
+        // default opts
+        opts = Object.assign({
+            cwd: this.resolveString("home"),
+            stdio: "inherit",
+            shell: true,
+        }, opts);
+
+        // Callback function?
+        if (typeof(action) === 'function')
+        {
+            action = await action.call(this, this.currentRule, opts);
+            if (action === undefined)
+                return;
+        }   
+
+        // String?
+        if (typeof(action) === 'string')
+        {
+            action = quotedSplit(this.evalString(action));
+        }
+
+        if (Array.isArray(action))
+        {
+            action = { cmdargs: action }
+        }
+
+        if (action.cmdargs)
+        {
+            // Resolve cmd args
+            let cmdargs = this.evalArray(action.cmdargs);
+            while (true)
+            {
+                if (cmdargs[0].startsWith('-'))
+                {
+                    cmdargs[0] = cmdargs[0].substring(1);
+                    opts.ignoreExitCode = true;
+                }
+                else if (cmdargs[0].startsWith('@'))
+                {
+                    cmdargs[0] = cmdargs[0].substring(1);
+                    opts.stdio = [ "ignore", "inherit", "inherit" ];
+                }
+                else
+                    break;
+            }
+
+            Object.assign(opts, action.opts);
+
+            return await run(cmdargs, opts);
+        }
+
+        throw new Error(`Don't know how to exec '${action}'`)
     }
 }
 

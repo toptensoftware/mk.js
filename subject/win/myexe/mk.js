@@ -3,14 +3,9 @@ export default async function ()
     // MSVC tool chain
     await this.use("msvc");
 
-    // Define variables
-    this.define({
+    // Set variables
+    this.set({
         config: "debug",
         projectKind: "exe",
-    });
-
-    this.rule({
-        output: "build",
-        input: "$(outputFile)",
     });
 };

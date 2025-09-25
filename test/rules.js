@@ -6,7 +6,7 @@ import { Project } from "../Project.js";
 
 function ruleToString(rule)
 {
-    return toString(rule.output) + " : " + quotedJoin(rule.input) + " : " + rule.action[0].name + "()";
+    return toString(rule.target) + " : " + quotedJoin(rule.deps) + " : " + rule.action[0].name + "()";
 }
 
 class MockProject extends Project
@@ -53,7 +53,7 @@ test("simple rule", async (t) =>
     let proj = new MockProject();
     proj.rule({
         output: "test.obj",
-        input: "test.c",
+        deps: "test.c",
         action: function compileC() {},
     }); 
 
@@ -69,12 +69,12 @@ test("chained rules", async (t) =>
     let proj = new MockProject();
     proj.rule({
         output: "test.obj",
-        input: "test.c",
+        deps: "test.c",
         action: function compile(rule) { }
     }); 
     proj.rule({
         output: "test.exe",
-        input: "test.obj",
+        deps: "test.obj",
         action: function link(rule) { }
     }); 
 
@@ -91,12 +91,12 @@ test("inferred rule", async (t) =>
     let proj = new MockProject();
     proj.rule({
         output: "%.obj",
-        input: "%.c",
+        deps: "%.c",
         action: function compile(rule) { }
     }); 
     proj.rule({
         output: "%.exe",
-        input: "%.obj",
+        deps: "%.obj",
         action: function link(rule) { }
     }); 
 
@@ -113,12 +113,12 @@ test("choose from multiple inferred rules", async (t) =>
     let proj = new MockProject();
     proj.rule({
         output: "%.obj",
-        input: "%.c",
+        deps: "%.c",
         action: function compileC(rule) { }
     }); 
     proj.rule({
         output: "%.obj",
-        input: "%.cpp",
+        deps: "%.cpp",
         action: function compileCPP(rule) { }
     }); 
 
@@ -134,12 +134,12 @@ test("conflicting multiple inferred rules", async (t) =>
     let proj = new MockProject();
     proj.rule({
         output: "%.obj",
-        input: "%.c",
+        deps: "%.c",
         action: function compileC(rule) { }
     }); 
     proj.rule({
         output: "%.obj",
-        input: "%.c",
+        deps: "%.c",
         action: function compileC(rule) { }
     }); 
 
@@ -151,7 +151,7 @@ test("build if output missing", async (t) =>
     let proj = new MockProject();
     proj.rule({
         output: "missing.obj",
-        input: "test.c",
+        deps: "test.c",
         action: function compileC(rule) { }
     }); 
 
@@ -167,7 +167,7 @@ test("skip if up to date", async (t) =>
     let proj = new MockProject();
     proj.rule({
         output: "up-to-date.obj",
-        input: "up-to-date.c",
+        deps: "up-to-date.c",
         action: function compileC(rule) { }
     }); 
 
@@ -183,7 +183,7 @@ test("build if out of date", async (t) =>
     let proj = new MockProject();
     proj.rule({
         output: "out-of-date.obj",
-        input: "out-of-date.c",
+        deps: "out-of-date.c",
         action: function compileC(rule) { }
     }); 
 
@@ -200,7 +200,7 @@ test("only build target once", async (t) =>
     let proj = new MockProject();
     proj.rule({
         output: "out-of-date.obj",
-        input: "out-of-date.c",
+        deps: "out-of-date.c",
         action: function compileC(rule) { }
     }); 
 

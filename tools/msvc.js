@@ -78,14 +78,15 @@ export default async function() {
     this.default({
         sourceDir: ".",
         projectKind: "exe",
-        objDir: "./build/$(config)/obj",
-        outputDir: "./build/$(config)/bin",
+        buildDir: "./build",
+        objDir: "$(buildDir)/$(config)/obj",
+        outputDir: "$(buildDir)/$(config)/bin",
         outputFile: "$(outputDir)/$(projectName).$(outputExtension)",
         sourceFiles: cache(() => this.glob("$(sourceDir)/*.{c,cpp}")),
         objFiles: () => this.sourceFiles.map(x => `${this.objDir}/${changeExtension(x, "obj")}`),
-        pdb: () => path.dirname(this.ruleOutput) + "/",
+        pdb: () => path.dirname(this.ruleTarget) + "/",
         warningLevel: 1,
-        defines: [],
+        define: [],
         includePath: [],
         msvcrt: "MD",
         outputExtension: () => {
@@ -120,7 +121,7 @@ export default async function() {
             if (line == null)
             {
                 // Finished, write .d file
-                fs.writeFileSync(changeExtension(self.ruleOutput, ".d"), deps, "utf8");
+                fs.writeFileSync(changeExtension(self.ruleTarget, ".d"), deps, "utf8");
             }
             else
             {
@@ -141,7 +142,7 @@ export default async function() {
                     if (!filenameFiltered)
                     {
                         if (!sourceFileResolved)
-                            sourceFileResolved = ospath.resolve(self.ruleFirstInput);
+                            sourceFileResolved = ospath.resolve(self.ruleFirstDep);
                         if (sourceFileResolved == ospath.resolve(line))
                         {
                             filenameFiltered = true;
@@ -163,12 +164,12 @@ export default async function() {
         try
         {
             // Get the time of the target
-            let targetTime = self.mtime(self.ruleOutput);
+            let targetTime = self.mtime(self.ruleTarget);
             if (targetTime == 0)
                 return true;
 
             // Read the .d file
-            let deps = fs.readFileSync(changeExtension(self.ruleOutput, ".d"), "utf8").split("\n")
+            let deps = fs.readFileSync(changeExtension(self.ruleTarget, ".d"), "utf8").split("\n")
 
             // Check each dep
             for (let dep of deps)
@@ -203,14 +204,14 @@ export default async function() {
             `/W$(warningLevel)`,
             `/Zc:wchar_t`,
             `/FC`,
-            ensureArray(this.defines).map(x => `/d,${x}`),
+            ensureArray(this.define).map(x => `/d,${x}`),
             ensureArray(this.includePath).map(x => `/I,${x}`),
             this.config == "debug"
                 ? [ "/D_DEBUG", "/Od", `/$(msvcrt)d` ] 
                 : [ "/DNDEBUG", "/O2", "/Oi", `/$(msvcrt)` ],
             this.msvc_cl_args,
-            '/c', "$(ruleFirstInput)",
-            `/Fo$(ruleOutput)`,
+            '/c', "$(ruleFirstDep)",
+            `/Fo$(ruleTarget)`,
         ],
         opts: {
             env: captureMsvcEnvironment(),
@@ -221,7 +222,7 @@ export default async function() {
     // Compile C Code
     this.rule({
         output: "$(objDir)/%.obj",
-        input: "$(sourceDir)/%.c",
+        deps: "$(sourceDir)/%.c",
         name: "compile",
         mkdir: true,
         needsBuild: checkHeaderDeps,
@@ -231,7 +232,7 @@ export default async function() {
     // Compile C++ Code
     this.rule({
         output: "$(objDir)/%.obj",
-        input: "$(sourceDir)/%.cpp",
+        deps: "$(sourceDir)/%.cpp",
         name: "compile",
         mkdir: true,
         needsBuild: checkHeaderDeps,
@@ -241,7 +242,7 @@ export default async function() {
     // Link (.exe or .dll)
     this.rule({
         output: "$(outputFile)",
-        input: () => this.objFiles,
+        deps: () => this.objFiles,
         name: "link",
         mkdir: true,
         condition: () => !this.projectKind.match(/lib|a/),
@@ -254,11 +255,11 @@ export default async function() {
                     ? [  ] 
                     : [ "/OPT:REF", "/OPT:ICF" ],
                 this.libs,
-                this.ruleInput,
-                this.ruleOutput.endsWith(".exe") ? [] : [ "/DLL" ],
+                this.ruleDeps,
+                this.ruleTarget.endsWith(".exe") ? [] : [ "/DLL" ],
                 this.msvc_link_args,
-                `/out:$(ruleOutput)`,
-                `/pdb:${changeExtension(this.ruleOutput, ".pdb")}`
+                `/out:$(ruleTarget)`,
+                `/pdb:${changeExtension(this.ruleTarget, ".pdb")}`
             ],
             opts: {
                 env: captureMsvcEnvironment(),
@@ -269,7 +270,7 @@ export default async function() {
     // Create library (.lib)
     this.rule({
         output: "$(outputFile)",
-        input: () => this.objFiles,
+        deps: () => this.objFiles,
         name: "lib",
         mkdir: true,
         condition: () => !!this.projectKind.match(/lib|a/),
@@ -277,13 +278,33 @@ export default async function() {
             cmdargs: [
                 `@lib.exe`,
                 `/nologo`,
-                this.ruleInput,
+                this.ruleDeps,
                 this.msvc_lib_args,
-                `/out:$(ruleOutput)`,
+                `/out:$(ruleTarget)`,
             ],
             opts: {
                 env: captureMsvcEnvironment(),
             }
         })
+    });
+
+    this.rule({
+        name: "build",
+        deps: "$(outputFile)",
+    });
+
+    this.rule({
+        name: "clean",
+        action: "rm -rf $(buildDir)"
+    });
+
+    this.rule({
+        name: "run",
+        deps: "build",
+        action: {
+            cmdargs: "$(outputFile)",
+            opts: { shell: false },
+        },
+        condition: () => this.projectKind == "exe",
     });
 }

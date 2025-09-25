@@ -24,7 +24,7 @@ test("eval: callback", (t) =>
 test("eval: expand", (t) =>
 {
     let proj = new Project();
-    proj.define({
+    proj.set({
         greeting: "Hello",
         subject: "World"
     });
@@ -34,7 +34,7 @@ test("eval: expand", (t) =>
 test("eval: expand callback", (t) =>
 {
     let proj = new Project();
-    proj.define({
+    proj.set({
         greeting: "Hello",
         subject: "World"
     });
@@ -44,7 +44,7 @@ test("eval: expand callback", (t) =>
 test("eval: flatten", (t) =>
 {
     let proj = new Project();
-    proj.define({
+    proj.set({
         greeting: "Hello",
         subject: "World"
     });
@@ -54,7 +54,7 @@ test("eval: flatten", (t) =>
 test("prop: simple", (t) =>
 {
     let proj = new Project();
-    proj.define({
+    proj.set({
         greeting: "Hello World",
     });
     assert.equal(proj.greeting, "Hello World");
@@ -64,7 +64,7 @@ test("prop: simple", (t) =>
 test("prop: callback", (t) =>
 {
     let proj = new Project();
-    proj.define({
+    proj.set({
         greeting: "Hello",
         subject: "World",
         message: () => `${proj.greeting} ${proj.subject}`
@@ -75,7 +75,7 @@ test("prop: callback", (t) =>
 test("prop: expand", (t) =>
 {
     let proj = new Project();
-    proj.define({
+    proj.set({
         recursive: "Hello",
         greeting: "$(recursive)",
         subject: "World",
@@ -90,7 +90,7 @@ test("prop: expand", (t) =>
 test("prop: callback with this", (t) =>
 {
     let proj = new Project();
-    proj.define({
+    proj.set({
         greeting: "Hello",
         subject: "World",
         message: function() { return `${this.greeting} ${this.subject}` }
@@ -101,12 +101,12 @@ test("prop: callback with this", (t) =>
 test("prop: redefine property", (t) =>
 {
     let proj = new Project();
-    proj.define({
+    proj.set({
         greeting: "Hello",
         subject: "World",
         message: "${greeting} ${subject}",
     });
-    proj.define({
+    proj.set({
         message: () => `${proj.greeting} ${proj.subject}!!!`,
     });
     assert.equal(proj.message, "Hello World!!!");
@@ -116,7 +116,7 @@ test("prop: redefine property", (t) =>
 test("prop: expand arrays", (t) =>
 {
     let proj = new Project();
-    proj.define({
+    proj.set({
         greeting: "Hello",
         subject: "World",
         message: [ "$(greeting)", "$(subject)" ],
@@ -127,7 +127,7 @@ test("prop: expand arrays", (t) =>
 test("prop: expand arrays from callbacks", (t) =>
 {
     let proj = new Project();
-    proj.define({
+    proj.set({
         greeting: "Hello",
         subject: "World",
         message: () => [ "$(greeting)", [ "$(subject)", "!!!" ] ],
@@ -139,7 +139,7 @@ test("prop: expand arrays from callbacks", (t) =>
 test("prop: props on other objects", (t) =>
 {
     let proj = new Project();
-    proj.define({
+    proj.set({
         greeting: "Hello",
         subject: "World",
     });
@@ -156,4 +156,11 @@ test("prop: props on other objects", (t) =>
     });
 
     assert.equal(other.message, "Hello World!!!");
+})
+
+
+test("prop: invalid property set", (t) =>
+{
+    let proj = new Project();
+    assert.throws(() => proj.set("ruleTarget", "xx"), /override/);
 })

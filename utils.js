@@ -183,6 +183,7 @@ export async function run(cmdargs, opts)
                 cb(buf);
                 buf = "";
             }
+            cb(null);     // EOF notice
         }
 
         return fn;
@@ -277,4 +278,29 @@ export function toArray(val)
         return val;
 
     return [ val ];
+}
+
+
+export function cache(target)
+{
+    let result = undefined;
+    let called = false;
+    let fn = function()
+    {
+        if (!called)
+        {
+            result = target.apply(this, arguments);
+            called = true;
+        }
+
+        return result;
+    }
+
+    fn.flush = function()
+    {
+        called = false;
+        result = undefined;
+    }
+
+    return fn;
 }

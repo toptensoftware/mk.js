@@ -1,9 +1,9 @@
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { posix as path, default as ospath } from "node:path";
 import { mkdirSync } from 'node:fs';
-
-import { run, fileTime, resolve, quotedJoin, escapeRegExp, ensureArray, toString, quotedSplit } from "./utils.js";
 import { EventEmitter } from 'node:events';
+import { globSync } from 'glob';
+import { run, fileTime, quotedJoin, escapeRegExp, ensureArray, quotedSplit } from "./utils.js";
 
 const __dirname = ospath.dirname(fileURLToPath(import.meta.url));
 
@@ -510,6 +510,21 @@ export class Project extends EventEmitter
         this.currentRule = finalMRule;
         try
         {
+            // Check for other triggers
+            for (let r of finalMRule.rules)
+            {
+                for (let nb of ensureArray(r.needsBuild))
+                {
+                    if (nb.call(r, this))
+                    {
+                        needsBuild = true;
+                        break;
+                    }
+                }
+                if (needsBuild)
+                    break;
+            }
+
             if (!needsBuild)
             {
                 this.log(2, `Skipping ${target}`);
@@ -565,7 +580,7 @@ export class Project extends EventEmitter
             cwd: this.projectDir,
             stdio: "inherit",
             shell: true,
-        }, this.eval(opts));
+        }, opts);
 
         // Callback function?
         if (typeof(cmd) === 'function')
@@ -594,7 +609,7 @@ export class Project extends EventEmitter
                 // eg: { cmdargs: [ "ls", "-al" ], opts: { cwd: "/" } ]
                 cmdargs = ensureArray(this.eval(cmd.cmdargs));
 
-            Object.assign(opts, this.eval(cmd.opts));
+            Object.assign(opts, cmd.opts);
         }
         else
         {

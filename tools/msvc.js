@@ -1,7 +1,10 @@
 import fs from 'node:fs';
-import { posix as path } from 'node:path';
+import { posix as path, default as ospath } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
-import { run, ensureArray, changeExtension } from "../utils.js";
+import { cache, ensureArray, changeExtension } from "../utils.js";
+
+const __dirname = ospath.dirname(fileURLToPath(import.meta.url));
 
 // Expand windows style environment variables
 function expandEnvVars(str) {
@@ -69,6 +72,8 @@ function captureMsvcEnvironment()
 
 export default async function() {
 
+    let self = this;
+
     // Default variables
     this.default({
         sourceDir: ".",
@@ -76,6 +81,8 @@ export default async function() {
         objDir: "./build/$(config)/obj",
         outputDir: "./build/$(config)/bin",
         outputFile: "$(outputDir)/$(projectName).$(outputExtension)",
+        sourceFiles: cache(() => this.glob("$(sourceDir)/*.{c,cpp}")),
+        objFiles: () => this.sourceFiles.map(x => `${this.objDir}/${changeExtension(x, "obj")}`),
         pdb: () => path.dirname(this.ruleOutput) + "/",
         warningLevel: 1,
         defines: [],
@@ -99,10 +106,96 @@ export default async function() {
         }
     });
 
+    // Creates a filter to filter the stdout from cl.exe to
+    // 1. filter out the source file name
+    // 2. capture the names of included files produced by /showincludes and build a .d file
+    //    that can be used for automatic header file generation.
+    function createStdoutFilter() 
+    {
+        let deps = "";
+        let filenameFiltered = false;
+        let sourceFileResolved = null;
+        return (line) => 
+        {
+            if (line == null)
+            {
+                // Finished, write .d file
+                fs.writeFileSync(changeExtension(self.ruleOutput, ".d"), deps, "utf8");
+            }
+            else
+            {
+                // Capture included files
+                if (line.startsWith("Note: including file:"))
+                {
+                    let file = line.substr(21).trim();
+
+                    // Don't include system files
+                    if (!file.startsWith("C:\\Program Files"))
+                    {
+                        deps += file + "\n";
+                    }
+                }
+                else
+                {
+                    // Suppress printing name of source file
+                    if (!filenameFiltered)
+                    {
+                        if (!sourceFileResolved)
+                            sourceFileResolved = ospath.resolve(self.ruleFirstInput);
+                        if (sourceFileResolved == ospath.resolve(line))
+                        {
+                            filenameFiltered = true;
+                            return;
+                        }
+                    }
+
+                    // Other output message
+                    process.stdout.write(line + "\r\n");
+                }
+            }
+        }
+    }
+
+    // Read a previously saved .d file and check if any of the dependent header files are
+    // newer than the target file
+    function checkHeaderDeps()
+    {
+        try
+        {
+            // Get the time of the target
+            let targetTime = self.mtime(self.ruleOutput);
+            if (targetTime == 0)
+                return true;
+
+            // Read the .d file
+            let deps = fs.readFileSync(changeExtension(self.ruleOutput, ".d"), "utf8").split("\n")
+
+            // Check each dep
+            for (let dep of deps)
+            {
+                // Ignore blank lines
+                dep = dep.trim();
+                if (dep == "")
+                    continue;
+
+                // Check time stamp
+                let t = self.mtime(dep);
+                if (t != 0 && t > targetTime)
+                    return true;
+            }
+            return false;
+        }
+        catch
+        {
+            // Probably dep file not yet generated, don't care.
+            return false;
+        }
+    }
+
     // Callback lambda to compile a c or c++ file
     let compile = () => this.exec({
         cmdargs: [
-            `@cl.exe`,
+            `cl.exe`,
             `/nologo`,
             `/Zi`,
             `/Fd$(pdb)`,
@@ -121,6 +214,7 @@ export default async function() {
         ],
         opts: {
             env: captureMsvcEnvironment(),
+            stdout: createStdoutFilter(),
         }
     })
 
@@ -130,6 +224,7 @@ export default async function() {
         input: "$(sourceDir)/%.c",
         name: "compile",
         mkdir: true,
+        needsBuild: checkHeaderDeps,
         action: compile,
     });
 
@@ -139,6 +234,7 @@ export default async function() {
         input: "$(sourceDir)/%.cpp",
         name: "compile",
         mkdir: true,
+        needsBuild: checkHeaderDeps,
         action: compile,
     });
 

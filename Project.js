@@ -666,7 +666,7 @@ export class Project extends EventEmitter
 
         // Resolve targets
         if (this.mkopts.targets.length == 0)
-            this.mkopts.targets = [ "default" ]
+            this.mkopts.targets = [ "build" ]
 
         // Define globals
         this.define(this.mkopts.globals);

@@ -10,7 +10,7 @@ export default async function ()
     });
 
     this.rule({
-        output: "default",
+        output: "build",
         input: "$(outputFile)",
     });
 };

@@ -1,14 +1,15 @@
 {
-  "name": "mk",
-  "version": "1.0.0",
+  "name": "mk.js",
+  "version": "0.0.1",
   "main": "index.js",
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "author": "Topten Software",
+  "copyright": "Copyright (C) 2025 Topten Software. All Rights Reserved",
+  "description": "JavaScript based build system",
+  "license": "Apache-2.0",
   "imports": {
     "#mk": "./mk.js"
   },

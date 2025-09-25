@@ -13,6 +13,7 @@
     "#mk": "./mk.js"
   },
   "dependencies": {
+    "@toptensoftware/clargs": "github:toptensoftware/clargs",
     "glob": "^11.0.3"
   }
 }

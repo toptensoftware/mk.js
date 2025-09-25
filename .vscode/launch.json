@@ -12,6 +12,7 @@
                 "<node_internals>/**"
             ],
             "program": "${workspaceFolder}\\index.js",
+            "args": [ ],
             "cwd": "${workspaceFolder}\\subject\\win\\myexe\\",
             "outputCapture": "std",
         }

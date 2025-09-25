@@ -6,7 +6,7 @@ export default async function ()
     // Define variables
     this.define({
         config: "debug",
-        objFiles: [ "$(objdir)/test.obj" ],
+        objFiles: [ "$(objDir)/test.obj" ],
         projectKind: "exe",
     });
 

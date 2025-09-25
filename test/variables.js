@@ -48,57 +48,112 @@ test("eval: flatten", (t) =>
         greeting: "Hello",
         subject: "World"
     });
-    assert.deepEqual(proj.eval([[1,2,3],[4,["$(greeting)",() => "$(subject)"]],[7,8]]), [1,2,3,4,"Hello","World",7,8]);
+    assert.deepEqual(proj.eval([[1,2,3],[4,["$(greeting)",() => "$(subject)"]],[7,8]]), [[1,2,3],[4,["Hello","World"]],[7,8]]);
 });
 
-test("resolve: simple", (t) =>
+test("prop: simple", (t) =>
 {
     let proj = new Project();
     proj.define({
-        boolVal: true,
-        numVal: 42,
-        strVal: "hello",
-        arrVal: [ "a", "b", "c" ],  
+        greeting: "Hello World",
     });
-
-    assert.equal(proj.resolve("boolVal"), true);
-    assert.equal(proj.resolve("numVal"), 42);
-    assert.equal(proj.resolve("strVal"), "hello");
-    assert.deepEqual(proj.resolve("arrVal"), [ "a", "b", "c" ]);
+    assert.equal(proj.greeting, "Hello World");
 });
 
-test("resolve: expand", (t) =>
+
+test("prop: callback", (t) =>
 {
     let proj = new Project();
     proj.define({
-        val: "$(otherVal)",
-        otherVal: "Hello World",
-    });
-
-    assert.equal(proj.resolve("val"), "Hello World");
-});
-
-test("resolve: expand recursive", (t) =>
-{
-    let proj = new Project();
-    proj.define({
-        val: "$(otherVal)",
-        otherVal: "$(greeting) World",
-        greeting: "Hello"
-    });
-
-    assert.equal(proj.resolve("val"), "Hello World");
-});
-
-test("resolve: expand multiple", (t) =>
-{
-    let proj = new Project();
-    proj.define({
-        val: "$(otherVal)",
-        otherVal: "$(greeting) $(subject)",
         greeting: "Hello",
-        subject: "World"
+        subject: "World",
+        message: () => `${proj.greeting} ${proj.subject}`
+    });
+    assert.equal(proj.message, "Hello World");
+});
+
+test("prop: expand", (t) =>
+{
+    let proj = new Project();
+    proj.define({
+        recursive: "Hello",
+        greeting: "$(recursive)",
+        subject: "World",
+        intVal: 43,
+        boolVal: false,
+        arrayVal: [ "a", "b", "c d", [ 11, true ] ],
+        message: "$(greeting) $(subject) $(intVal) $(boolVal) $(arrayVal)"
+    });
+    assert.equal(proj.message, 'Hello World 43 false a b "c d" 11 true');
+});
+
+test("prop: callback with this", (t) =>
+{
+    let proj = new Project();
+    proj.define({
+        greeting: "Hello",
+        subject: "World",
+        message: function() { return `${this.greeting} ${this.subject}` }
+    });
+    assert.equal(proj.message, "Hello World");
+});
+
+test("prop: redefine property", (t) =>
+{
+    let proj = new Project();
+    proj.define({
+        greeting: "Hello",
+        subject: "World",
+        message: "${greeting} ${subject}",
+    });
+    proj.define({
+        message: () => `${proj.greeting} ${proj.subject}!!!`,
+    });
+    assert.equal(proj.message, "Hello World!!!");
+});
+
+
+test("prop: expand arrays", (t) =>
+{
+    let proj = new Project();
+    proj.define({
+        greeting: "Hello",
+        subject: "World",
+        message: [ "$(greeting)", "$(subject)" ],
+    });
+    assert.deepEqual(proj.message, [ "Hello", "World" ]);
+})
+
+test("prop: expand arrays from callbacks", (t) =>
+{
+    let proj = new Project();
+    proj.define({
+        greeting: "Hello",
+        subject: "World",
+        message: () => [ "$(greeting)", [ "$(subject)", "!!!" ] ],
+    });
+    assert.deepEqual(proj.message, [ "Hello", [ "World", "!!!" ] ]);
+})
+
+
+test("prop: props on other objects", (t) =>
+{
+    let proj = new Project();
+    proj.define({
+        greeting: "Hello",
+        subject: "World",
     });
 
-    assert.equal(proj.resolve("val"), "Hello World");
-});
+    let other = {
+        punct: "!!!",
+    }
+
+    proj.createProperty(other, "message", function(p) { 
+        // 'this' refers to 'other' object
+        // 'p' refers to the project the property was created through
+        // $(vars) are expanded against the project
+        return `${p.greeting} $(subject)${this.punct}`;
+    });
+
+    assert.equal(other.message, "Hello World!!!");
+})

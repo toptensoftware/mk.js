@@ -71,19 +71,18 @@ export default async function() {
 
     // Default variables
     this.default({
-        srcdir: ".",
+        sourceDir: ".",
         projectKind: "exe",
-        objdir: "./build/$(config)/obj",
-        outdir: "./build/$(config)/bin",
-        outputFile: "$(outdir)/$(name).$(outputExtension)",
-        pdb: () => path.dirname(this.resolve("ruleOutput")) + "/",
+        objDir: "./build/$(config)/obj",
+        outputDir: "./build/$(config)/bin",
+        outputFile: "$(outputDir)/$(projectName).$(outputExtension)",
+        pdb: () => path.dirname(this.ruleOutput) + "/",
         warningLevel: 1,
-        define: [],
+        defines: [],
         includePath: [],
         msvcrt: "MD",
         outputExtension: () => {
-            let projKind = this.resolveString("projectKind")
-            switch (projKind)
+            switch (this.projectKind)
             {
                 case "exe": 
                     return "exe";
@@ -96,12 +95,12 @@ export default async function() {
                 case "a":
                     return "lib";
             }
-            throw new Error(`Unknown project kind: ${projKind}.  Expected 'exe', 'so'/'dll' or 'lib'/'a'"`)
+            throw new Error(`Unknown project kind: ${this.projectKind}.  Expected 'exe', 'so'/'dll' or 'lib'/'a'"`)
         }
     });
 
     // Callback lambda to compile a c or c++ file
-    let compile = () => ({
+    let compile = () => this.exec({
         cmdargs: [
             `@cl.exe`,
             `/nologo`,
@@ -111,12 +110,12 @@ export default async function() {
             `/W$(warningLevel)`,
             `/Zc:wchar_t`,
             `/FC`,
-            ...this.resolveArray("define").map(x => `/d,${x}`),
-            ...this.resolveArray("includePath").map(x => `/I,${x}`),
-            ...(this.resolveString("config") == "debug")
+            ensureArray(this.defines).map(x => `/d,${x}`),
+            ensureArray(this.includePath).map(x => `/I,${x}`),
+            this.config == "debug"
                 ? [ "/D_DEBUG", "/Od", `/$(msvcrt)d` ] 
                 : [ "/DNDEBUG", "/O2", "/Oi", `/$(msvcrt)` ],
-            ...this.resolveArray("msvc_cl_args"),
+            this.msvc_cl_args,
             '/c', "$(ruleFirstInput)",
             `/Fo$(ruleOutput)`,
         ],
@@ -127,8 +126,8 @@ export default async function() {
 
     // Compile C Code
     this.rule({
-        output: "$(objdir)/%.obj",
-        input: "$(srcdir)/%.c",
+        output: "$(objDir)/%.obj",
+        input: "$(sourceDir)/%.c",
         name: "compile",
         mkdir: true,
         action: compile,
@@ -136,8 +135,8 @@ export default async function() {
 
     // Compile C++ Code
     this.rule({
-        output: "$(objdir)/%.obj",
-        input: "$(srcdir)/%.cpp",
+        output: "$(objDir)/%.obj",
+        input: "$(sourceDir)/%.cpp",
         name: "compile",
         mkdir: true,
         action: compile,
@@ -146,24 +145,24 @@ export default async function() {
     // Link (.exe or .dll)
     this.rule({
         output: "$(outputFile)",
-        input: () => this.resolveArray("objFiles"),
+        input: () => this.objFiles,
         name: "link",
         mkdir: true,
-        condition: () => !this.resolveString("projectKind").match(/lib|a/),
-        action: () => ({
+        condition: () => !this.projectKind.match(/lib|a/),
+        action: () => this.exec({
             cmdargs: [
                 `@link.exe`,
                 `/nologo`,
                 `/DEBUG`,
-                ...(this.resolveString("config") == "debug")
+                this.config == "debug"
                     ? [  ] 
                     : [ "/OPT:REF", "/OPT:ICF" ],
-                ...this.resolveArray("libs"),
-                ...this.resolveArray("ruleInput"),
-                ...this.resolveString("ruleOutput").endsWith(".exe") ? [] : [ "/DLL" ],
-                ...this.resolveArray("msvc_link_flags"),
+                this.libs,
+                this.ruleInput,
+                this.ruleOutput.endsWith(".exe") ? [] : [ "/DLL" ],
+                this.msvc_link_args,
                 `/out:$(ruleOutput)`,
-                `/pdb:${changeExtension(this.resolveString("ruleOutput"), ".pdb")}`
+                `/pdb:${changeExtension(this.ruleOutput, ".pdb")}`
             ],
             opts: {
                 env: captureMsvcEnvironment(),
@@ -174,16 +173,16 @@ export default async function() {
     // Create library (.lib)
     this.rule({
         output: "$(outputFile)",
-        input: () => this.resolveArray("objFiles"),
+        input: () => this.objFiles,
         name: "lib",
         mkdir: true,
-        condition: () => !!this.resolveString("projectKind").match(/lib|a/),
-        action: () => ({
+        condition: () => !!this.projectKind.match(/lib|a/),
+        action: () => this.exec({
             cmdargs: [
                 `@lib.exe`,
                 `/nologo`,
-                ...this.resolveArray("ruleInput"),
-                ...this.resolveArray("msvc_lib_flags"),
+                this.ruleInput,
+                this.msvc_lib_args,
                 `/out:$(ruleOutput)`,
             ],
             opts: {

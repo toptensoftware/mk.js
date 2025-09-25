@@ -2,7 +2,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { posix as path, default as ospath } from "node:path";
 import { mkdirSync } from 'node:fs';
 
-import { run, fileTime, resolve, quotedJoin, escapeRegExp, toArray, toBool, toString, quotedSplit } from "./utils.js";
+import { run, fileTime, resolve, quotedJoin, escapeRegExp, ensureArray, toString, quotedSplit } from "./utils.js";
 import { EventEmitter } from 'node:events';
 
 const __dirname = ospath.dirname(fileURLToPath(import.meta.url));
@@ -14,50 +14,131 @@ export class Project extends EventEmitter
         super();
     }
 
-    // Global variables used by this project and sub-projects
-    globals = {};
-
-    // Local variables only used by this project
-    vars =  {}
+    // Default make options
+    mkopts = {
+        mkfile: "./mk.js",
+        dir: ".",
+        globals: {},
+        targets: [],
+        rebuild: false,
+        libPath: [],
+        dryrun: false,
+        verbosity: 1,
+    }
 
     // Rules for this project
     rules = [];
 
-    // Load root level mk file
-    async load(mkfile)
+    // Set to true if any actions invoked
+    #actionsTaken = false;
+
+    // Evaluate a value by invoking callbacks, and expanding strings
+    // val - the value to evaluate
+    // [callbackThis] - the value of "this" for callbacks (this if unspecified)
+    eval(val, callbackThis)
     {
-        // Check not already loaded
-        if (this.vars.mkfile)
-            throw new Error("Project already loaded");
+        // Recursively evaluate arrays
+        if (Array.isArray(val))
+            return val.map(x => this.eval(x, callbackThis));
 
-        // Import mk script
-        let absmkfile = path.resolve("./mk.js");
-
-        // Setup project variables
-        this.vars.mkfile = absmkfile;
-        this.vars.home = path.dirname(absmkfile);
-        this.vars.name = path.basename(this.vars.home);
-
-        // Load and call module
-        let module = await import(pathToFileURL(absmkfile).href);
-        await module.default.call(this);
-    }
-
-    // Define local variables
-    define(vals)
-    {
-        Object.assign(this.vars, vals);
-    }
-
-    // Define local variables, but only if not already defined
-    default(vals)
-    {
-        for (let key in vals) 
+        switch (typeof(val))
         {
-            if (!Object.prototype.hasOwnProperty.call(this.vars, key)) 
+            case "function":
+                if (callbackThis === undefined)
+                    return this.eval(val.call(this));
+                else
+                    return this.eval(val.call(callbackThis, this), callbackThis);
+
+            case "string":
+                return val.replace(/\$\(([^)]+)\)/g, (m, varname) => {
+                    let v = this[varname];
+                    if (v === undefined || v === null)
+                        return "";
+                    if (Array.isArray(v))
+                        return quotedJoin(v);
+                    else
+                        return v;
+                });
+
+            case "object":
+                let result = {};
+                for (let [key, v] of Object.entries(val))
+                {
+                    result[key] = this.eval(v, callbackThis);
+                }
+                return result;
+        }
+
+        return val;
+    }
+
+    // Define a property on 'object', named 'key' with
+    // value 'val' that will be this.eval'd each acces
+    createProperty(object, key, val)
+    {
+        let self = this;
+
+        // Is it a type that needs evaluating?
+        if (Array.isArray(val) || 
+            (typeof(val) === 'string' && val.indexOf("$(") >= 0)  ||
+            typeof(val) === 'function' ||
+            typeof(val) === 'object')
+        {
+            Object.defineProperty(object, key, {
+                get: function() { return self.eval(val, object) },
+                enumerable: true,
+                configurable: true
+            });
+        }
+        else if (val === undefined)
+        {
+            // Delete key?
+            delete object[key];
+        }
+        else
+        {
+            // Set simpel value
+            object[key] = val;
+        }
+    }
+
+    // Define properties on this project
+    define(defs)
+    {
+        if (arguments.length == 2)
+        {
+            // define(key, val)
+            let [key, val] = arguments;
+            this.createProperty(this, key, val);
+        }
+        else
+        {
+            // define({key: val, ...})
+            for (let [key, val] of Object.entries(defs))
             {
-                this.vars[key] = vals[key];
+                this.createProperty(this, key, val);
             }
+        }
+    }   
+
+    // Define a properties on this project, but only if
+    // not already defined.
+    default(defs)
+    {
+        if (arguments.length == 2)
+        {
+            // default(key, val)
+            let [key, val] = arguments;
+            if (this[key] === undefined)
+                this.createProperty(this, key, val);
+            return;
+        }
+
+        // default({key: val, ...})
+        for (let [key, val] of Object.entries(defs))
+        {
+            if (this[key] === undefined)
+                this.createProperty(this, key, val);
         }
     }
 
@@ -68,14 +149,12 @@ export class Project extends EventEmitter
         if (!rule.output)
             throw new Error("Rule must have output target name");
 
-        // Add to list
-        this.rules.push(rule);
-
-        // Make sure input is set and is an array
-        if (!rule.input)
-            rule.input = [];
-        else if (!Array.isArray(rule.input))
-            rule.input = [rule.input];
+        // Convert properties that need evaluation to accessor functions
+        this.createProperty(rule, "input", rule.input);
+        this.createProperty(rule, "output", rule.output);
+        this.createProperty(rule, "condition", rule.condition);
+        this.createProperty(rule, "mkdir", rule.mkdir);
+        this.createProperty(rule, "name", rule.name);
 
         // Null out empty actions
         if (rule.action)
@@ -114,6 +193,7 @@ export class Project extends EventEmitter
 
         // Capture location of rule definition
         rule.stack = (new Error()).stack;
+        this.rules.push(rule);
     }
 
     // Uses something else?
@@ -135,12 +215,20 @@ export class Project extends EventEmitter
         if (item.startsWith("."))
         {
             // Load relative to project
-            loadPath = path.join(this.home, item);
+            loadPath = path.join(this.projDir, item);
         }
         else
         {
-            // Load from tools directory
-            loadPath = path.join(__dirname, "tools", item + ".js");
+            // Search on lib path
+            for (let libDir of this.mkopts.libPath)
+            {
+                let p = path.join(libDir, item + ".js");
+                if (this.mtime(p) !== 0)
+                {
+                    loadPath = p;
+                    break;
+                }
+            }
         }
 
         // Call it
@@ -152,136 +240,20 @@ export class Project extends EventEmitter
     glob(pattern, options)
     {
         let opts = Object.assign({
-            cwd: this.vars.home,
+            cwd: this.projectDir,
             posix: true,
         }, options);
 
-        pattern = this.evalString(pattern);
+        pattern = this.eval(pattern);
 
         return globSync(pattern, opts);
     }
 
-    // eval a value by invoking callback functions, and flattening arrays and
-    // expanding strings
-    eval(obj)
-    {
-        if (obj === null || obj === undefined)
-            return obj;
-
-        // Callback
-        if (typeof(obj) === 'function')
-            obj = obj.call(this);
-
-        // Recursively flatten and callback arrays
-        if (Array.isArray(obj))
-        {
-            let result = [];
-            for (let i=0; i<obj.length; i++)
-            {
-                if (obj[i] === null || obj[i] === undefined)
-                    continue;
-
-                let mapped = this.eval(obj[i]);
-                if (Array.isArray(mapped))
-                    result.push(...mapped);
-                else
-                    result.push(mapped);
-            }
-            return result;
-        }
-
-        if (typeof(obj) === 'string')
-            return this.expand(obj);
-
-        // Result
-        return obj;
-    }
-
-    evalString(obj)
-    {
-        return toString(this.eval(obj));
-    }
-
-    evalArray(obj)
-    {
-        return toArray(this.eval(obj));
-    }
-
-    evalBool(obj)
-    {
-        return toBool(this.eval(obj));
-    }
-
-    // Variables currently being resolved (to detect circular references)
-    _resolving = new Set();
-
-    // Resolve and eval a variable name to its value
-    resolve(varname)
-    {
-        // Check for circular names
-        if (this._resolving.has(varname))
-            throw new Error(`Circular reference resolving variable '${varname}'`);
-        this._resolving.add(varname);
-
-        try
-        {
-            // Resolve variable
-            let val = undefined;
-
-            if (this.currentRule != null)
-            {
-                // Note: currentRule variables are already expanded
-                switch (varname)
-                {
-                    case "ruleOutput":
-                        return this.currentRule.output;
-                    case "ruleInput":
-                        return this.currentRule.input;
-                    case "ruleFirstInput":
-                        return this.currentRule.input.length > 0 ? this.currentRule.input[0] : null;
-                    case "ruleUniqueInput":
-                        return [...new Set(this.currentRule.input)];
-                }
-            }
-
-            if (this.vars.hasOwnProperty(varname))
-                val =  this.vars[varname];
-            else if (this.globals.hasOwnProperty(varname))
-                val = this.globals[varname];
-            else if (process.env.hasOwnProperty(varname))
-                val = process.env[varname];
-
-            // eval the value
-            return this.eval(val);
-        }
-        finally
-        {
-            this._resolving.delete(varname);
-        }
-    }
-
-    resolveBool(varname)
-    {
-        return toBool(this.resolve(varname));
-    }
-
-    resolveArray(varname)
-    {
-        return toArray(this.resolve(varname));
-    }   
-
-    resolveString(varname)
-    {
-        return toString(this.resolve(varname));
-    }
-
-    // Resolve a string expression, or an array of string expressions
-    expand(expr)
-    {
-        if (typeof(expr) !== 'string')
-            return expr;
-        return resolve(expr, (varname) => quotedJoin(this.resolve(varname)));
-    }
+    // Current rule vars
+    get ruleOutput() { return this.currentRule?.output }
+    get ruleInput() { return this.currentRule?.input }
+    get ruleFirstInput() { return this.currentRule == null ? null : this.currentRule.input.length > 0 ? this.currentRule.input[0] : null }
+    get ruleUniqueInput() { return this.currentRule == null ? null : [...new Set(this.currentRule.input)]}
 
     // Find all rules that can produce a given file
     // filename should be fully expanded
@@ -295,7 +267,7 @@ export class Project extends EventEmitter
         for (let rule of this.rules)
         {
             // Match input pattern
-            let pattern = this.evalString(rule.output);
+            let pattern = rule.output;
 
             if (pattern.indexOf("%") < 0 && pattern === filename)
             {
@@ -314,7 +286,7 @@ export class Project extends EventEmitter
             for (let rule of this.rules)
             {
                 // Match input pattern
-                let pattern = this.evalString(rule.output);
+                let pattern = rule.output;
 
                 // Inferred rules?
                 if (pattern.indexOf("%") >= 0)
@@ -336,7 +308,7 @@ export class Project extends EventEmitter
                         // Infer rule from pattern
                         inferred = Object.assign({}, rule, {
                             output: filename,
-                            input: this.evalArray(rule.input).map(x => toString(x).replace(/\%/g, () => m[1])),
+                            input: ensureArray(rule.input).map(x => x.replace(/\%/g, () => m[1])),
                         });
                     }
 
@@ -350,16 +322,25 @@ export class Project extends EventEmitter
             }
         }
 
-        rules = rules.filter(x => x.condition == undefined || this.evalBool(x.condition));
+        rules = rules.filter(x => x.condition ?? true);
 
         return rules;
     }
+
+    #dryRunMTimes  = new Map();
 
     // Get the modification time of a file, or 0 if it doesn't exist
     // Override for mock file testing
     // filename should be expanded
     mtime(filename)
     {
+        if (this.mkopts.dryrun)
+        {
+            let time = this.#dryRunMTimes.get(filename);
+            if (time !== undefined)
+                return time;
+        }
+
         return fileTime(filename);
     }
 
@@ -374,26 +355,35 @@ export class Project extends EventEmitter
         return this.mtime(filename) != 0;
     }
 
-    builtFiles = new Map();
+    #builtFiles = new Map();
+
+    async buildTarget(target)
+    {
+        // Eval the filename
+        target = this.eval(target);
+
+        // If target  has already been built, then don't need to redo it return
+        // the same result as last time
+        let r = this.#builtFiles.get(target);
+        if (r != undefined)
+            return r;
+
+        // Build it
+        r = await this.buildTargetInternal(target);
+
+        // Remember it
+        this.#builtFiles.set(target, r);
+
+        return r;
+    }
 
     // Builds a file, returning 
     // - true if the file has rules
     // - false if the file has no rules but the file exists
     // If no rules, but file doesn't exist an exception is thrown
-    async buildTarget(target)
+    async buildTargetInternal(target)
     {
         let self = this;
-
-        // Eval the filename
-        target = this.evalString(target);
-
-        // If file has already been build, then don't need to redo it return
-        // the same result as last time
-        let r = this.builtFiles.get(target);
-        if (r != undefined)
-            return r;
-
-        console.log(`Building ${target}`);
 
         // Find rules for this file
         let rules = this.findRules(target);
@@ -427,13 +417,16 @@ export class Project extends EventEmitter
 
                 // Combine inputs
                 // Action rule inputs go at the start
-                mrule.input.unshift(...rule.input.map(x => self.eval(x)).flat(Infinity));
+                mrule.input.unshift(...ensureArray(rule.input).flat(Infinity));
+
+                // The action rule gives the name
+                mrule.name = rule.name;
             }
             else
             {
                 // Combine inputs
                 // Non-action rule inputs go at the end
-                mrule.input.push(...rule.input.map(x => self.eval(x)).flat(Infinity));
+                mrule.input.push(...ensureArray(rule.input).flat(Infinity));
             }
 
             // Add to list of sub rules
@@ -494,13 +487,12 @@ export class Project extends EventEmitter
             {
                 throw new Error(`No rule for target '${target}'`);
             }
-            this.builtFiles.set(target, false);
             return false;
         }
 
         // Build all inputs
         let outputTime = this.mtime(target);
-        let needsBuild = outputTime === 0;
+        let needsBuild = this.mkopts.rebuild || outputTime === 0;
         for (let input of finalMRule.input)
         {
             let inputHasRules = await this.buildTarget(input);
@@ -514,21 +506,31 @@ export class Project extends EventEmitter
             }
         }
 
+
         this.currentRule = finalMRule;
         try
         {
             if (!needsBuild)
             {
+                this.log(2, `Skipping ${target}`);
                 this.emit("skipFile", target, finalMRule);
             }
             else
             {
                 this.emit("willbuildTarget", target, finalMRule)
 
-                // Make output directory?
-                if (finalMRule.rules.some(x => this.evalBool(x.mkdir)))
+                // Display message
+                if (finalMRule.action?.length ?? 0 > 0)
                 {
-                    mkdirSync(path.dirname(target), { recursive: true });
+                    this.log(1, `${finalMRule.name ?? "building"}: ${target}`);
+                }
+
+                // Make output directory?
+                if (finalMRule.rules.some(x => x.mkdir))
+                {
+                    if (!this.mkopts.dryrun)
+                        mkdirSync(path.dirname(target), { recursive: true });
+                    this.#actionsTaken = true;
                 }
 
                 // Build this file
@@ -538,7 +540,12 @@ export class Project extends EventEmitter
                     {
                         await this.exec(action);
                     }
+                    this.#actionsTaken = true;
                 }
+
+
+                if (this.mkopts.dryrun)
+                    this.#dryRunMTimes.set(target, Date.now());
 
                 this.emit("didbuildTarget", target, finalMRule);
             }
@@ -548,64 +555,133 @@ export class Project extends EventEmitter
             this.currentRule = null;
         }
 
-        this.builtFiles.set(target, true);
         return true;
     }
 
-    async exec(action, opts)
+    async exec(cmd, opts)
     {
-        // default opts
+        // Resolve opts
         opts = Object.assign({
-            cwd: this.resolveString("home"),
+            cwd: this.projectDir,
             stdio: "inherit",
             shell: true,
-        }, opts);
+        }, this.eval(opts));
 
         // Callback function?
-        if (typeof(action) === 'function')
+        if (typeof(cmd) === 'function')
         {
-            action = await action.call(this, this.currentRule, opts);
-            if (action === undefined)
-                return;
+            return await cmd.call(this, this.currentRule, opts);
         }   
 
-        // String?
-        if (typeof(action) === 'string')
+        // Handle different cmd types
+        let cmdargs;
+        if (typeof(cmd) === 'string')
         {
-            action = quotedSplit(this.evalString(action));
+            // eg: "ls -al"
+            cmdargs = quotedSplit(this.eval(cmd));
+        }
+        else if (Array.isArray(cmd))
+        {
+            // eg: ["ls", "-al"]
+            cmdargs = this.eval(cmd);
+        }
+        else if (cmd.cmdargs)
+        {
+            if (typeof(cmd.cmdargs) === 'string')
+                // eg: { cmdargs: "ls -al", opts: { cwd: "/" } }
+                cmdargs = quotedSplit(this.eval(cmd.cmdargs));
+            else    
+                // eg: { cmdargs: [ "ls", "-al" ], opts: { cwd: "/" } ]
+                cmdargs = ensureArray(this.eval(cmd.cmdargs));
+
+            Object.assign(opts, this.eval(cmd.opts));
+        }
+        else
+        {
+            throw new Error(`Don't know how to exec '${cmd}'`)
         }
 
-        if (Array.isArray(action))
-        {
-            action = { cmdargs: action }
-        }
+        // Object with cmdargs
+        if (cmdargs.length < 0)
+            return;
 
-        if (action.cmdargs)
+        // Special prefix characters
+        while (true)
         {
-            // Resolve cmd args
-            let cmdargs = this.evalArray(action.cmdargs);
-            while (true)
+            if (cmdargs[0].startsWith('-'))
             {
-                if (cmdargs[0].startsWith('-'))
-                {
-                    cmdargs[0] = cmdargs[0].substring(1);
-                    opts.ignoreExitCode = true;
-                }
-                else if (cmdargs[0].startsWith('@'))
-                {
-                    cmdargs[0] = cmdargs[0].substring(1);
-                    opts.stdio = [ "ignore", "inherit", "inherit" ];
-                }
-                else
-                    break;
+                cmdargs[0] = cmdargs[0].substring(1);
+                opts.ignoreExitCode = true;
             }
-
-            Object.assign(opts, action.opts);
-
-            return await run(cmdargs, opts);
+            else if (cmdargs[0].startsWith('@'))
+            {
+                cmdargs[0] = cmdargs[0].substring(1);
+                if (!this.mkopts.verbose)
+                {
+                    opts.stdio = [ "ignore", "ignore", "inherit" ];
+                }
+            }
+            else
+                break;
         }
 
-        throw new Error(`Don't know how to exec '${action}'`)
+        this.log(2, `${opts.cwd}$ ${quotedJoin(cmdargs)}`);
+
+        // Don't actually run it
+        if (this.mkopts.dryrun)
+            return 0;
+
+        // Run command
+        return await run(cmdargs, opts);
+    }
+
+    log(level, message)
+    {
+        if (level <= this.mkopts.verbosity)
+        {
+            process.stdout.write(message + "\n");
+        }
+    }
+
+    async make()
+    {
+        // Check not already loaded
+        if (this.projectFile)
+            throw new Error("Project already loaded");
+
+        // Resolve targets
+        if (this.mkopts.targets.length == 0)
+            this.mkopts.targets = [ "default" ]
+
+        // Define globals
+        this.define(this.mkopts.globals);
+
+        // Resolve path to mk file
+        let absmkfile = path.resolve(this.mkopts.mkfile);
+
+        // Setup project variables
+        this.projectFile = absmkfile;
+        this.projectDir = path.resolve(this.mkopts.dir) ?? path.dirname(this.projectFile);
+        this.projectName = path.basename(this.projectDir);
+
+        // Load and call module
+        let module = await import(pathToFileURL(this.projectFile).href);
+        await module.default.call(this);
+
+        // Build all targets
+        for (let t of this.mkopts.targets)
+        {
+            await this.buildTarget(this.eval(t));
+        }
+
+        if (!this.#actionsTaken)
+        {
+            this.log(1, "All targets up to date");
+        }
+        else if (this.mkopts.dryrun)
+        {
+            this.log(1, "## dry run, nothing updated");
+        }
     }
 }
 

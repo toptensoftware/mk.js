@@ -97,8 +97,6 @@ export async function run(cmdargs, opts)
     if (opts.stderr)
         opts.stdio[2] = 'pipe';
 
-    console.log(`${opts.cwd ?? process.cwd()}$ ${quotedJoin(cmdargs)}`);
-
     return new Promise((resolve, reject) => {
 
         // Spawn process

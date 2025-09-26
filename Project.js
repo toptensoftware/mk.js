@@ -3,7 +3,7 @@ import { posix as path, default as ospath } from "node:path";
 import { mkdirSync } from 'node:fs';
 import { EventEmitter } from 'node:events';
 import { globSync } from 'glob';
-import { run, fileTime, quotedJoin, escapeRegExp, ensureArray, quotedSplit } from "./utils.js";
+import { run, fileTime, quotedJoin, escapeRegExp, ensureArray, quotedSplit, isDirectory } from "./utils.js";
 
 const __dirname = ospath.dirname(fileURLToPath(import.meta.url));
 
@@ -16,8 +16,7 @@ export class Project extends EventEmitter
 
     // Default mkopts
     mkopts = {
-        mkfile: "./mk.js",
-        dir: ".",
+        dir: null,
         globals: {},
         rebuild: false,
         libPath: [],
@@ -25,8 +24,16 @@ export class Project extends EventEmitter
         verbosity: 1,
     };
 
-    // Load a project
-    async load(mkopts)
+    // Helper to create and load a project
+    static async load(mkfile, mkopts)
+    {
+        let proj = new Project();
+        await proj.#load(mkfile, mkopts);
+        return proj;
+    }
+
+    // Load this project
+    async #load(mkfile, mkopts)
     {
         // Check not already loaded
         if (this.projectFile)
@@ -42,16 +49,30 @@ export class Project extends EventEmitter
         this.set(this.mkopts.globals);
 
         // Resolve path to mk file
-        let absmkfile = path.resolve(this.mkopts.mkfile);
+        let absmkfile = path.resolve(mkfile);
+        if (isDirectory(absmkfile))
+        {
+            absmkfile = path.join(absmkfile, "mk.js");
+        }
 
         // Setup project variables
         this.projectFile = absmkfile;
-        this.projectDir = path.resolve(this.mkopts.dir) ?? path.dirname(this.projectFile);
+        this.projectDir = this.mkopts.dir ? path.resolve(this.mkopts.dir) : path.dirname(this.projectFile);
         this.projectName = path.basename(this.projectDir);
 
         // Load and call module
         let module = await import(pathToFileURL(this.projectFile).href);
         await module.default.call(this);
+    }
+
+    async loadSubProject(mkfile, mkopts)
+    {
+        // Resolve mkfile relative to this project
+        mkfile = path.resolve(this.projectDir, this.eval(mkfile));
+
+        // Resolve options
+        mkopts = Object.assign({}, this.mkopts, { dir: null }, mkopts)
+        return await Project.load(mkfile, mkopts);
     }
 
     // Rules for this project
@@ -220,7 +241,7 @@ export class Project extends EventEmitter
             for (let libDir of this.mkopts.libPath)
             {
                 let p = path.join(libDir, item + ".js");
-                if (this.mtime(p) !== 0)
+                if (fileTime(p) !== 0)
                 {
                     jsFile = p;
                     break;
@@ -267,7 +288,7 @@ export class Project extends EventEmitter
                 return time;
         }
 
-        return fileTime(filename);
+        return fileTime(path.resolve(this.projectDir, filename));
     }
 
     // Can this project build a file?
@@ -595,7 +616,7 @@ export class Project extends EventEmitter
                         // Make output directory?
                         if (finalMRule.isFileTarget && finalMRule.rules.some(x => x.mkdir) && !this.mkopts.dryrun)
                         {
-                            mkdirSync(path.dirname(target), { recursive: true });
+                            mkdirSync(path.dirname(path.join(this.projectDir, target)), { recursive: true });
                         }
 
                         // Run actions

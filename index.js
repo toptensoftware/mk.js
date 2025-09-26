@@ -5,6 +5,7 @@ import { clargs, showPackageVersion, showArgs } from "@toptensoftware/clargs";
 
 const __dirname = ospath.dirname(fileURLToPath(import.meta.url));
 
+let mkfile = ".";
 let mkopts = { 
     globals: {},
     libPath: [],
@@ -45,7 +46,7 @@ while (args.next())
             break;
 
         case "file":
-            mkopts.mkfile = args.readValue();
+            mkfile = args.readValue();
             break;
 
         case "dir":
@@ -84,8 +85,7 @@ while (args.next())
 }
 
 // Load project
-let proj = new Project();
-await proj.load(mkopts);
+let proj = await Project.load(mkfile, mkopts);
 
 // Build targets
 if (targets.length == 0)

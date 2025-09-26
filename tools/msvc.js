@@ -323,7 +323,7 @@ export default async function() {
             if (line == null)
             {
                 // Finished, write .d file
-                fs.writeFileSync(changeExtension(self.ruleTarget, ".d"), deps, "utf8");
+                fs.writeFileSync(path.resolve(self.projectDir, changeExtension(self.ruleTarget, ".d")), deps, "utf8");
             }
             else
             {

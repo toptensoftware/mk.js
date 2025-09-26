@@ -304,3 +304,13 @@ export function cache(target)
 
     return fn;
 }
+
+
+export function isDirectory(targetPath) {
+  try {
+    const stat = fs.statSync(path.resolve(targetPath));
+    return stat.isDirectory();
+  } catch {
+    return false;
+  }
+}

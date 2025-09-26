@@ -12,7 +12,7 @@
                 "<node_internals>/**"
             ],
             "program": "${workspaceFolder}\\index.js",
-            "args": [ ],
+            "args": [ "--rebuild" ],
             "cwd": "${workspaceFolder}\\subject\\win\\myexe\\",
             "outputCapture": "std",
         }

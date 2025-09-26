@@ -1,4 +1,4 @@
-#include <stdio.h>
+#include "precomp.h"
 #include "test.h"
 #include "other.h"
 

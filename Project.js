@@ -59,14 +59,6 @@ export class Project extends EventEmitter
                     else
                         return v;
                 });
-
-            case "object":
-                let result = {};
-                for (let [key, v] of Object.entries(val))
-                {
-                    result[key] = this.eval(v, callbackThis);
-                }
-                return result;
         }
 
         return val;

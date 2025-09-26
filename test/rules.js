@@ -6,7 +6,7 @@ import { Project } from "../Project.js";
 
 function ruleToString(rule)
 {
-    return toString(rule.target) + " : " + quotedJoin(rule.deps) + " : " + rule.action[0].name + "()";
+    return toString(rule.target) + " : " + quotedJoin(rule.deps) + " : " + rule.primaryRule.action.name + "()";
 }
 
 class MockProject extends Project

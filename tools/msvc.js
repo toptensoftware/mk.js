@@ -139,6 +139,7 @@ export default async function() {
         deps: "$(sourceDir)/%.c",
         name: "compile",
         mkdir: true,
+        subject: "$(ruleFirstDep)",
         needsBuild: checkHeaderDeps,
         action: compile,
     });
@@ -149,6 +150,7 @@ export default async function() {
         deps: "$(sourceDir)/%.cpp",
         name: "compile",
         mkdir: true,
+        subject: "$(ruleFirstDep)",
         needsBuild: checkHeaderDeps,
         action: compile,
     });

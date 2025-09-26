@@ -14,23 +14,48 @@ export class Project extends EventEmitter
         super();
     }
 
-    // Default make options
+    // Default mkopts
     mkopts = {
         mkfile: "./mk.js",
         dir: ".",
         globals: {},
-        targets: [],
         rebuild: false,
         libPath: [],
         dryrun: false,
         verbosity: 1,
+    };
+
+    // Load a project
+    async load(mkopts)
+    {
+        // Check not already loaded
+        if (this.projectFile)
+            throw new Error("Project already loaded");
+
+        // Merge options
+        Object.assign(this.mkopts, mkopts);
+
+        // Add the standard tools path
+        this.mkopts.libPath.push(path.join(__dirname, "tools"));
+        
+        // Set globals
+        this.set(this.mkopts.globals);
+
+        // Resolve path to mk file
+        let absmkfile = path.resolve(this.mkopts.mkfile);
+
+        // Setup project variables
+        this.projectFile = absmkfile;
+        this.projectDir = path.resolve(this.mkopts.dir) ?? path.dirname(this.projectFile);
+        this.projectName = path.basename(this.projectDir);
+
+        // Load and call module
+        let module = await import(pathToFileURL(this.projectFile).href);
+        await module.default.call(this);
     }
 
     // Rules for this project
     rules = [];
-
-    // Set to true if any actions invoked
-    #actionsTaken = false;
 
     // Evaluate a value by invoking callbacks, and expanding strings
     // val - the value to evaluate
@@ -142,35 +167,12 @@ export class Project extends EventEmitter
     // Register a rule for this project
     rule(rule)
     {        
-        // Convert properties that need evaluation to accessor functions
+        // Convert properties that need evaluation accessor functions
         this.createProperty(rule, "name", rule.name);
         this.createProperty(rule, "output", rule.output);
         this.createProperty(rule, "deps", rule.deps);
         this.createProperty(rule, "condition", rule.condition);
         this.createProperty(rule, "mkdir", rule.mkdir);
-
-        // Null out empty actions
-        /*
-        if (rule.action)
-        {
-            // Ensure array
-            if (!Array.isArray(rule.action))
-                rule.action = [rule.action];
-
-            // Filter out no-op actions
-            rule.action = rule.action.filter(x => {
-                if (x === null || x === undefined)
-                    return false;
-                if (typeof(x) === 'string')
-                    return x.trim() != "";
-                return x;
-            });
-
-            // Clear if no actions
-            if (rule.action.length === 0)
-                rule.action = null;
-        }
-        */
 
         // Capture location
         /*
@@ -191,7 +193,7 @@ export class Project extends EventEmitter
         this.rules.push(rule);
     }
 
-    // Uses something else?
+    // use(jsfile)
     async use(item)
     {
         // Call function
@@ -205,12 +207,12 @@ export class Project extends EventEmitter
         if (typeof(item) !== 'string')
             throw new Error("use() requires a string or callback that resolves to a string");
 
-        // Load the module
-        let loadPath;
+        // Resolve .js file
+        let jsFile;
         if (item.startsWith("."))
         {
             // Load relative to project
-            loadPath = path.join(this.projDir, item);
+            jsFile = path.join(this.projDir, item);
         }
         else
         {
@@ -220,14 +222,14 @@ export class Project extends EventEmitter
                 let p = path.join(libDir, item + ".js");
                 if (this.mtime(p) !== 0)
                 {
-                    loadPath = p;
+                    jsFile = p;
                     break;
                 }
             }
         }
 
-        // Call it
-        let module = await import(pathToFileURL(loadPath).href);
+        // Load and call
+        let module = await import(pathToFileURL(jsFile).href);
         module.default.call(this);
     }
 
@@ -240,7 +242,6 @@ export class Project extends EventEmitter
         }, options);
 
         pattern = this.eval(pattern);
-
         return globSync(pattern, opts);
     }
 
@@ -279,8 +280,6 @@ export class Project extends EventEmitter
             return true;
         return this.mtime(filename) != 0;
     }
-
-    #builtTargets = new Map();
 
     // Find all rules for a target
     // filename should be fully expanded
@@ -363,6 +362,25 @@ export class Project extends EventEmitter
         return rules;
     }
 
+    // Build a list of targets
+    async buildTargets(targets)
+    {
+        // Build all targets
+        for (let t of targets)
+        {
+            await this.buildTarget(this.eval(t));
+        }
+
+        if (this.mkopts.dryrun)
+        {
+            this.log(1, "## dry run, nothing updated");
+        }
+    }
+
+
+    #builtTargets = new Map();
+
+    // Build a single target
     async buildTarget(target)
     {
         // Eval the filename
@@ -370,24 +388,24 @@ export class Project extends EventEmitter
 
         // If target  has already been built, then don't need to redo it return
         // the same result as last time
-        let r = this.#builtTargets.get(target);
-        if (r != undefined)
-            return r;
+        let result = this.#builtTargets.get(target);
+        if (result != undefined)
+            return result;
 
         // Build it
-        r = await this.buildTargetInternal(target);
+        result = await this.#buildTargetInternal(target);
 
         // Remember it
-        this.#builtTargets.set(target, r);
+        this.#builtTargets.set(target, result);
 
-        return r;
+        return result;
     }
 
     // Builds a file, returning 
     // - true if the file has rules
     // - false if the file has no rules but the file exists
     // If no rules, but file doesn't exist an exception is thrown
-    async buildTargetInternal(target)
+    async #buildTargetInternal(target)
     {
         let self = this;
 
@@ -398,9 +416,9 @@ export class Project extends EventEmitter
         let finalMRule = {
             target: target,
             isFileTarget: undefined,
-            action: null,
             deps: [],
             rules: [],
+            primaryRule: null,
         };
 
         function copyMRule(mrule)
@@ -408,9 +426,9 @@ export class Project extends EventEmitter
             return {
                 target: mrule.target,
                 isFileTarget: mrule.isFIleTarget,
-                action: mrule.action,
                 deps: mrule.deps.slice(),
                 rules: mrule.rules.slice(),
+                primaryRule: mrule.primaryRule,
             };
         }
 
@@ -426,25 +444,24 @@ export class Project extends EventEmitter
             // Only one rule can have an action
             if (rule.action)
             {
-                if (mrule.action)
+                if (mrule.primaryRule)
                     throw new Error(`Multiple rules have actions for target '${target}'`);
-                mrule.action = ensureArray(rule.action);
 
-                // Combine inputs
+                // Combine deps
                 // Action rule inputs go at the start
                 mrule.deps.unshift(...ensureArray(rule.deps).flat(Infinity));
 
-                // Name comes from this rule
-                mrule.name = rule.name;
+                // Store the primary fule
+                mrule.primaryRule = rule;
             }
             else
             {
-                // Combine inputs
+                // Combine deps
                 // Non-action rule inputs go at the end
                 mrule.deps.push(...ensureArray(rule.deps).flat(Infinity));
             }
 
-            // Add to list of sub rules
+            // Add to list of rules
             mrule.rules.push(rule);
         }
 
@@ -505,10 +522,11 @@ export class Project extends EventEmitter
             throw new Error(`No rule for target '${target}'`);
         }
 
-        // Build all inputs
+        // Build dependencies
         let needsBuild = false;
         if (finalMRule.isFileTarget)
         {
+            // File targets
             let outputTime = this.mtime(target);
             needsBuild = this.mkopts.rebuild || outputTime === 0;
             for (let dep of finalMRule.deps)
@@ -526,7 +544,7 @@ export class Project extends EventEmitter
         }
         else
         {
-            // Non file targets, always built
+            // Non file targets (always built)
             needsBuild = true;
             for (let dep of finalMRule.deps)
             {
@@ -535,24 +553,21 @@ export class Project extends EventEmitter
         }
 
 
-        this.currentRule = finalMRule;
         try
         {
+            // Set the current rule
+            this.currentRule = finalMRule;
+
+            // Check for other triggers
             if (!needsBuild)
             {
-                // Check for other triggers
                 for (let r of finalMRule.rules)
                 {
-                    for (let nb of ensureArray(r.needsBuild))
+                    if (r.needsBuild && r.needsBuild.call(r, this))
                     {
-                        if (nb.call(r, this))
-                        {
-                            needsBuild = true;
-                            break;
-                        }
-                    }
-                    if (needsBuild)
+                        needsBuild = true;
                         break;
+                    }
                 }
             }
 
@@ -565,35 +580,34 @@ export class Project extends EventEmitter
             {
                 this.emit("willbuildTarget", target, finalMRule)
 
-                // Display message
-                if (finalMRule.action?.length ?? 0 > 0)
+                // Have actions?
+                if (finalMRule.primaryRule)
                 {
-                    if (finalMRule.isFileTarget)
+                    let actions = ensureArray(finalMRule.primaryRule.action);
+                    if (actions.length > 0)
                     {
                         // Log file build....
-                        this.log(1, `${finalMRule.name ?? "running"}: ${target}`);
+                        if (finalMRule.isFileTarget)
+                            this.log(1, `${finalMRule.primaryRule.name ?? "running"}: ${this.eval(finalMRule.primaryRule.subject) ?? target} `);
+//                        else
+//                            this.log(1, `${finalMRule.primaryRule.name}`);
 
                         // Make output directory?
-                        if (finalMRule.rules.some(x => x.mkdir))
+                        if (finalMRule.isFileTarget && finalMRule.rules.some(x => x.mkdir) && !this.mkopts.dryrun)
                         {
-                            if (!this.mkopts.dryrun)
-                                mkdirSync(path.dirname(target), { recursive: true });
-                            this.#actionsTaken = true;
+                            mkdirSync(path.dirname(target), { recursive: true });
+                        }
+
+                        // Run actions
+                        for (let action of actions)
+                        {
+                            await this.exec(action);
                         }
                     }
                 }
 
-                // Build this file
-                if (finalMRule.action)
-                {
-                    for (let action of finalMRule.action)
-                    {
-                        await this.exec(action);
-                    }
-                    this.#actionsTaken = true;
-                }
 
-
+                // If dry run, store current time as the mtime for file targets
                 if (this.mkopts.dryrun && finalMRule.isFileTarget)
                     this.#dryRunMTimes.set(target, Date.now());
 
@@ -608,6 +622,7 @@ export class Project extends EventEmitter
         return true;
     }
 
+    // Execute a command
     async exec(cmd, opts)
     {
         // Resolve opts
@@ -685,6 +700,7 @@ export class Project extends EventEmitter
         return await run(cmdargs, opts);
     }
 
+    // Log a message
     log(level, message)
     {
         if (level <= this.mkopts.verbosity)
@@ -693,46 +709,6 @@ export class Project extends EventEmitter
         }
     }
 
-    async make()
-    {
-        // Check not already loaded
-        if (this.projectFile)
-            throw new Error("Project already loaded");
-
-        // Resolve targets
-        if (this.mkopts.targets.length == 0)
-            this.mkopts.targets = [ "build" ]
-
-        // Set globals
-        this.set(this.mkopts.globals);
-
-        // Resolve path to mk file
-        let absmkfile = path.resolve(this.mkopts.mkfile);
-
-        // Setup project variables
-        this.projectFile = absmkfile;
-        this.projectDir = path.resolve(this.mkopts.dir) ?? path.dirname(this.projectFile);
-        this.projectName = path.basename(this.projectDir);
-
-        // Load and call module
-        let module = await import(pathToFileURL(this.projectFile).href);
-        await module.default.call(this);
-
-        // Build all targets
-        for (let t of this.mkopts.targets)
-        {
-            await this.buildTarget(this.eval(t));
-        }
-
-        if (!this.#actionsTaken)
-        {
-            this.log(1, "All targets up to date");
-        }
-        else if (this.mkopts.dryrun)
-        {
-            this.log(1, "## dry run, nothing updated");
-        }
-    }
 }
 
 

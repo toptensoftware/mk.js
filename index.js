@@ -5,8 +5,11 @@ import { clargs, showPackageVersion, showArgs } from "@toptensoftware/clargs";
 
 const __dirname = ospath.dirname(fileURLToPath(import.meta.url));
 
-let proj = new Project();
-let mkopts = proj.mkopts;
+let mkopts = { 
+    globals: {},
+    libPath: [],
+};
+let targets = [];
 let args = clargs();
 while (args.next())
 {
@@ -71,7 +74,7 @@ while (args.next())
             else
             {
                 // unnamed arg eg: file.txt
-                mkopts.targets.push(parts[0]);
+                targets.push(parts[0]);
             }
             break;
 
@@ -80,10 +83,15 @@ while (args.next())
     }
 }
 
-// Add the standard tools path
-mkopts.libPath.push(path.join(__dirname, "tools"));
+// Load project
+let proj = new Project();
+await proj.load(mkopts);
 
-await proj.make();
+// Build targets
+if (targets.length == 0)
+    targets = [ "build" ]
+await proj.buildTargets(targets);
+
 
 
 function showVersion()

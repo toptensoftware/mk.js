@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { posix as path, default as ospath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
-import { cache, ensureArray, changeExtension } from "../utils.js";
+import { toPosix, toWindows, ensureArray, changeExtension } from "../utils.js";
 
 const __dirname = ospath.dirname(fileURLToPath(import.meta.url));
 
@@ -296,6 +296,7 @@ export default async function() {
         let deps = "";
         let filenameFiltered = false;
         let sourceFileResolved = null;
+        let currentDrive = process.cwd()[0];
         return (line) => 
         {
             if (line == null)
@@ -310,10 +311,18 @@ export default async function() {
                 {
                     let file = line.substr(21).trim();
 
-                    // Don't include system files
-                    if (!file.startsWith("C:\\Program Files"))
+                    // Don't include files on other drives (confuses posix paths)
+                    if (file[0] == currentDrive)
                     {
-                        deps += file + "\n";
+                        // Don't include system files
+                        if (!file.startsWith("C:\\Program Files"))
+                        {
+                            // Convert to posix style relative path from project
+                            let rel = self.relative(toPosix(file));
+
+                            // Convert to a relative path
+                            deps += rel + "\n";
+                        }
                     }
                 }
                 else

@@ -338,7 +338,7 @@ export class Project extends EventEmitter
                 return time;
         }
 
-        return fileTime(path.resolve(this.projectDir, filename));
+        return fileTime(ospath.resolve(this.projectDir, filename));
     }
 
     // Can this project build a file?

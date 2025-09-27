@@ -314,3 +314,19 @@ export function isDirectory(targetPath) {
     return false;
   }
 }
+
+
+export function toPosix(p) 
+{ 
+    // If drive letter included, must match the current cwd()
+    if (p[1] == ':' && p[0] != process.cwd()[0])
+        throw new Error("Can't convert windows to posix path on different drive to cwd");
+
+    // Strip the drive letter and switch \\ to /
+    return p.replace(/^[A-Za-z]\:/, "").replace(/\\/g, "/");
+}
+
+export function toWindows(p) 
+{ 
+    return p.replace(/\//g, "\\");
+}

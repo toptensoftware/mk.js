@@ -97,14 +97,26 @@ while (args.next())
     }
 }
 
-// Load project
-let proj = await Project.load(mkfile, mkopts);
+try
+{
+    // Load project
+    let proj = await Project.load(mkfile, mkopts);
 
-// Build targets
-if (targets.length == 0)
-    targets = [ "build" ]
-await proj.buildTargets(targets);
-
+    // Build targets
+    if (targets.length == 0)
+        targets = [ "build" ]
+    await proj.buildTargets(targets);
+}
+catch (err)
+{
+    if (err.info)
+    {
+        process.stderr.write(err.message + "\n");
+        process.exit(7);
+    }
+    else
+        throw err;
+}
 
 
 function showVersion()

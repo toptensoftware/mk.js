@@ -2,7 +2,8 @@
 #include "test.h"
 #include "other.h"
 
-#include "mylib/api.h"
+#include "static-lib/static-lib.h"
+#include "shared-lib/shared-lib.h"
 
 #ifdef _DEBUG
 const char* config = "debug";
@@ -13,7 +14,10 @@ const char* config = "release";
 int main()
 {
     int result = add(20, 3);
-    printf("Hello World!!! %i\n", result);
+    printf("Hello World!!!\n");
     printf("config: %s platform: %s\n", config, sizeof(void*) == 4 ? "x86" : "x64");  
+
+    printf("static-lib: %i\n", add(20, 3));
+    printf("shared-lib: %i\n", sub(20, 3));
     return 0;
 }

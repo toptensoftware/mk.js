@@ -1,10 +1,11 @@
 export default async function ()
 {
     // MSVC tool chain
-    await this.use("msvc");
+    await this.use("c-cpp");
 
-    // Load and build sub-project
-    await this.loadSubProject("mylib");
+    // Load sub-projects
+    await this.loadSubProject("static-lib");
+    await this.loadSubProject("shared-lib");
 
     // Set variables
     this.set({

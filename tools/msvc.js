@@ -77,13 +77,36 @@ export default async function() {
     let self = this;
 
     // Load standard c vars and rules
-    await this.use("./stdc.js");
+    await this.use("./common-c.js");
 
     // Default variables
     this.default({
         platform: "x64",
         objFiles: () => this.sourceFiles.map(x => `${this.objDir}/${changeExtension(x, "obj")}`),
         msvcrt: "MD",
+        linkLibrary: () => {
+            switch (this.projectKind)
+            {
+                case "lib":
+                case "a":
+                    return this.outputFile;
+
+                case "so":
+                case "dll":
+                    return changeExtension(this.outputFile, "lib");
+            }
+            return undefined;
+        },
+        runtimeFiles: () => {
+            switch (this.projectKind)
+            {
+                case "so":
+                case "dll":
+                case "exe":
+                    return [ this.outputFile, changeExtension(this.outputFile, "pdb") ];
+            }
+            return undefined;
+        },
         outputExtension: () => {
             switch (this.projectKind)
             {

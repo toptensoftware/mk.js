@@ -12,8 +12,8 @@
                 "<node_internals>/**"
             ],
             "program": "${workspaceFolder}\\index.js",
-            "args": [ "--rebuild" ],
-            "cwd": "${workspaceFolder}\\subject\\win\\myexe\\",
+            "args": [ "--vars", ".config=release" ],
+            "cwd": "${workspaceFolder}\\subject\\win\\myexe",
             "outputCapture": "std",
         }
     ]

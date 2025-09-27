@@ -5,8 +5,7 @@ export default async function ()
 
     // Set variables
     this.set({
-        buildDir: "../build/$(projectName)",
-        config: "debug",
+        buildRoot: "../build",
         projectKind: "lib",
     });
 };

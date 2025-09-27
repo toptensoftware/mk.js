@@ -7,6 +7,7 @@ const __dirname = ospath.dirname(fileURLToPath(import.meta.url));
 
 let mkfile = ".";
 let mkopts = { 
+    set: {},
     globals: {},
     libPath: [],
 };
@@ -61,6 +62,10 @@ while (args.next())
             mkopts.rebuild = true;
             break;
 
+        case "vars":
+            mkopts.vars = true;
+            break;
+
         case "dryrun":
             mkopts.dryrun = true;
             break;
@@ -69,8 +74,16 @@ while (args.next())
             let parts = args.readValue().split("=");
             if (parts.length ==  2)
             {
-                // Global variable assignment
-                mkopts.globals[parts[0]] = parts[1];
+                if (parts[0][0] == '.')
+                {
+                    // Local variable assignment
+                    mkopts.set[parts[0].substring(1)] = parts[1];
+                }
+                else
+                {
+                    // Global variable assignment
+                    mkopts.globals[parts[0]] = parts[1];
+                }
             }
             else
             {

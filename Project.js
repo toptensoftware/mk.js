@@ -17,11 +17,12 @@ export class Project extends EventEmitter
     // Default mkopts
     mkopts = {
         dir: null,
-        globals: {},
+        set: {},
         rebuild: false,
         libPath: [],
         dryrun: false,
         verbosity: 1,
+        vars: false,
     };
 
     // Helper to create and load a project
@@ -45,8 +46,9 @@ export class Project extends EventEmitter
         // Add the standard tools path
         this.mkopts.libPath.push(path.join(__dirname, "tools"));
         
-        // Set globals
+        // Set globals and vars
         this.set(this.mkopts.globals);
+        this.set(this.mkopts.set);
 
         // Resolve path to mk file
         let absmkfile = path.resolve(mkfile);
@@ -59,11 +61,18 @@ export class Project extends EventEmitter
         this.projectFile = absmkfile;
         this.projectDir = this.mkopts.dir ? path.resolve(this.mkopts.dir) : path.dirname(this.projectFile);
         this.projectName = path.basename(this.projectDir);
+        this.useBaseDir = this.projectDir;
 
         // Load and call module
         let module = await import(pathToFileURL(this.projectFile).href);
         await module.default.call(this);
+
+        // Dump variables
+        if (this.mkopts.vars)
+            this.dumpVars();
     }
+
+    subProjects = {};
 
     async loadSubProject(mkfile, mkopts)
     {
@@ -71,8 +80,12 @@ export class Project extends EventEmitter
         mkfile = path.resolve(this.projectDir, this.eval(mkfile));
 
         // Resolve options
-        mkopts = Object.assign({}, this.mkopts, { dir: null }, mkopts)
-        return await Project.load(mkfile, mkopts);
+        mkopts = Object.assign({}, this.mkopts, { dir: null, set: {} }, mkopts)
+        let subProject = await Project.load(mkfile, mkopts);
+
+        // Store and return
+        this.subProjects[subProject.projectName] = subProject;
+        return subProject;
     }
 
     // Rules for this project
@@ -114,7 +127,6 @@ export class Project extends EventEmitter
     // value 'val' that will be this.eval'd each acces
     createProperty(object, key, val)
     {
-
         if (key in Object.getPrototypeOf(object))
             throw new Error(`Can't override built-in property '${key}'`);
 
@@ -145,6 +157,21 @@ export class Project extends EventEmitter
         }
     }
 
+    vars = new Set();
+
+    dumpVars()
+    {
+        process.stdout.write(`--- ${this.projectName} variables ---\n`);
+        for (let key of this.vars)
+        {   
+            let val = this[key];
+            if (val === undefined)
+                continue;
+            process.stdout.write(`${key}: ${JSON.stringify(this[key])}\n`);
+        }
+        process.stdout.write(`---\n`);
+    }
+
     // Set properties on this project
     set(defs)
     {
@@ -152,6 +179,10 @@ export class Project extends EventEmitter
         {
             // set(key, val)
             let [key, val] = arguments;
+            if (val === undefined)
+                this.vars.delete(key);
+            else
+                this.vars.add(key);
             this.createProperty(this, key, val);
         }
         else
@@ -159,7 +190,7 @@ export class Project extends EventEmitter
             // set({key: val, ...})
             for (let [key, val] of Object.entries(defs))
             {
-                this.createProperty(this, key, val);
+                this.set(key, val);
             }
         }
     }   
@@ -173,7 +204,7 @@ export class Project extends EventEmitter
             // default(key, val)
             let [key, val] = arguments;
             if (this[key] === undefined)
-                this.createProperty(this, key, val);
+                this.set(key, val);
             return;
         }
 
@@ -181,8 +212,18 @@ export class Project extends EventEmitter
         for (let [key, val] of Object.entries(defs))
         {
             if (this[key] === undefined)
-                this.createProperty(this, key, val);
+                this.set(key, val);
         }
+    }
+
+    resolve(p)
+    {
+        return path.resolve(this.projectDir, p);
+    }
+
+    relative(p)
+    {
+        return path.relative(this.projectDir, p);
     }
 
     // Register a rule for this project
@@ -233,7 +274,7 @@ export class Project extends EventEmitter
         if (item.startsWith("."))
         {
             // Load relative to project
-            jsFile = path.join(this.projDir, item);
+            jsFile = path.join(this.useBaseDir, item);
         }
         else
         {
@@ -250,8 +291,17 @@ export class Project extends EventEmitter
         }
 
         // Load and call
-        let module = await import(pathToFileURL(jsFile).href);
-        module.default.call(this);
+        let saveUseBaseDir = this.useBaseDir;
+        this.useBaseDir = path.dirname(jsFile);
+        try
+        {
+            let module = await import(pathToFileURL(jsFile).href);
+            await module.default.call(this);
+        }
+        finally
+        {
+            this.useBaseDir = saveUseBaseDir;
+        }
     }
 
     // Perform a glob operation relative to the project home

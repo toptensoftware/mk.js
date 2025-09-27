@@ -4,13 +4,10 @@ export default async function ()
     await this.use("msvc");
 
     // Load and build sub-project
-    let subProject = await this.loadSubProject("mylib");
-    await subProject.buildTarget("build");
+    await this.loadSubProject("mylib");
 
     // Set variables
     this.set({
-        buildDir: "./build/$(projectName)",
-        config: "debug",
         projectKind: "exe",
     });
 };

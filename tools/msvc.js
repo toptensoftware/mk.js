@@ -12,32 +12,34 @@ function expandEnvVars(str) {
 }
 
 // Work out default install location for msvc
-function resolveMsvcLocation()
+let vcvars = null;
+function resolveVcVarsLocation()
 {
-    // Look for vcvars
-    let paths = [
-        "%PROGRAMFILES%\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\Build\\vcvarsall.bat",
-        "%PROGRAMFILES(x86)%\\Microsoft Visual Studio\\2019\\Community\\VC\\Auxiliary\\Build\\vcvarsall.bat",
-    ];
+    if (vcvars)
+        return vcvars;
+    // Use vswhere to locate latest SVC install location
+    let cmd = `"%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`
+    let output = execSync(expandEnvVars(cmd), { 
+            encoding: "utf-8" 
+        });
 
-    for (let p of paths)
-    {
-        let expanded = expandEnvVars(p);
-        if (fs.existsSync(expanded))
-            return expanded;
-    }
-
-    return null;
+    // Return path to vcvarsall
+    return vcvars = ospath.join(output.trim(), "VC\\Auxiliary\\Build\\vcvarsall.bat");
 }
 
-let msvc_env;
-function captureMsvcEnvironment()
+let msvc_env = {};
+function captureMsvcEnvironment(platform)
 {
-    if (msvc_env)
-        return msvc_env;
+    if (!platform) 
+        platform = "x64";
+    if (platform == "x64")
+        platform = "x86_x64";
+
+    if (msvc_env[platform])
+        return msvc_env[platform];
 
     // Resolve location
-    var vcvars = resolveMsvcLocation();
+    var vcvars = resolveVcVarsLocation();
     if (vcvars == null)
         throw new Error("Unable to resolve VC vars location");
 
@@ -45,23 +47,23 @@ function captureMsvcEnvironment()
     try 
     {
         // Run vcvars and capture resulting environment
-        let output = execSync(`"${vcvars}" x86_x64 && echo --- ENV --- && set`, 
+        let output = execSync(`"${vcvars}" ${platform} && echo --- ENV --- && set`, 
         { 
             encoding: "utf-8" 
         });
 
         // Get just the environment bit and split into lines
         output = output.split("--- ENV ---", 2)[1].replace("\r\n", "\n")
-        msvc_env = {};
+        let env = {};
         for (let line of output.split("\n"))
         {
             let parts = line.split("=", 2);
             if (parts.length == 2)
-               msvc_env[parts[0]] = parts[1].trim();
+               env[parts[0]] = parts[1].trim();
         }
 
         // Done
-        return msvc_env;
+        return msvc_env[platform] = env;
     } 
     catch (error) 
     {
@@ -74,19 +76,13 @@ export default async function() {
 
     let self = this;
 
+    // Load standard c vars and rules
+    await this.use("./stdc.js");
+
     // Default variables
     this.default({
-        sourceDir: ".",
-        projectKind: "exe",
-        buildDir: "./build",
-        objDir: "$(buildDir)/$(config)/obj",
-        outputDir: "$(buildDir)/$(config)/bin",
-        outputFile: "$(outputDir)/$(projectName).$(outputExtension)",
-        sourceFiles: cache(() => this.glob("$(sourceDir)/*.{c,cpp}")),
+        platform: "x64",
         objFiles: () => this.sourceFiles.map(x => `${this.objDir}/${changeExtension(x, "obj")}`),
-        warningLevel: 1,
-        define: [],
-        includePath: [],
         msvcrt: "MD",
         outputExtension: () => {
             switch (this.projectKind)
@@ -128,7 +124,7 @@ export default async function() {
             `/Fo$(ruleTarget)`,
         ],
         opts: {
-            env: captureMsvcEnvironment(),
+            env: captureMsvcEnvironment(this.platform),
             stdout: createStdoutFilter(),
         }
     })
@@ -164,13 +160,14 @@ export default async function() {
         condition: () => !this.projectKind.match(/lib|a/),
         action: () => this.exec({
             cmdargs: [
-                `@link.exe`,
+                `link.exe`,
                 `/nologo`,
                 `/DEBUG`,
                 this.config == "debug"
                     ? [  ] 
                     : [ "/OPT:REF", "/OPT:ICF" ],
                 this.libs,
+                this.subProjectLibs,
                 this.ruleDeps,
                 this.ruleTarget.endsWith(".exe") ? [] : [ "/DLL" ],
                 this.msvc_link_args,
@@ -178,7 +175,7 @@ export default async function() {
                 `/pdb:${changeExtension(this.ruleTarget, ".pdb")}`
             ],
             opts: {
-                env: captureMsvcEnvironment(),
+                env: captureMsvcEnvironment(this.platform),
             }
         })
     });
@@ -192,37 +189,18 @@ export default async function() {
         condition: () => !!this.projectKind.match(/lib|a/),
         action: () => this.exec({
             cmdargs: [
-                `@lib.exe`,
+                `lib.exe`,
                 `/nologo`,
                 this.ruleDeps,
                 this.msvc_lib_args,
                 `/out:$(ruleTarget)`,
             ],
             opts: {
-                env: captureMsvcEnvironment(),
+                env: captureMsvcEnvironment(this.platform),
             }
         })
     });
 
-    this.rule({
-        name: "build",
-        deps: "$(outputFile)",
-    });
-
-    this.rule({
-        name: "clean",
-        action: "rm -rf $(buildDir)"
-    });
-
-    this.rule({
-        name: "run",
-        deps: "build",
-        action: {
-            cmdargs: "$(outputFile)",
-            opts: { shell: false },
-        },
-        condition: () => this.projectKind == "exe",
-    });
 
     // Sort object files so the pch source file is first
     // Required so the pch file is created before trying to use it

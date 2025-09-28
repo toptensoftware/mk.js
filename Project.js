@@ -183,7 +183,24 @@ export class Project extends EventEmitter
                 this.vars.delete(key);
             else
                 this.vars.add(key);
-            this.createProperty(this, key, val);
+
+            // Extension property?
+            if (typeof(val) === 'function' && val.length > 0)
+            {
+                var prop = Object.getOwnPropertyDescriptor(this, key);
+                if (prop.value)
+                {
+                    this.createProperty(this, key, () => val.call(this, prop.value));
+                }
+                else
+                {
+                    this.createProperty(this, key, () => val.call(this, prop.get.call(this)));
+                }
+            }
+            else
+            {
+                this.createProperty(this, key, val);
+            }
         }
         else
         {

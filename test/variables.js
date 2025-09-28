@@ -164,3 +164,80 @@ test("prop: invalid property set", (t) =>
     let proj = new Project();
     assert.throws(() => proj.set("ruleTarget", "xx"), /override/);
 })
+
+
+test("prop: extend value", (t) =>
+{
+    let proj = new Project();
+    proj.set("apples", "red");
+
+    assert.equal(proj.apples, "red");
+
+    proj.set("apples", (p) => `${p} and green`);
+    assert.equal(proj.apples, "red and green");
+})
+
+test("prop: dynamic property extension", (t) =>
+{
+    let proj = new Project();
+
+    // Set a property with a getter
+    let color = "red"
+    proj.set("apples", () => color);
+    assert.equal(proj.apples, "red");
+
+    // Extend the property using the old value `p`
+    proj.set("apples", (p) => `${p} and green`);
+    assert.equal(proj.apples, "red and green");
+
+    // Extended property should pick up changes to the 
+    // original property value.
+    color = "yellow";
+    assert.equal(proj.apples, "yellow and green");
+})
+
+
+test("prop: dynamic property extension 2", (t) =>
+{
+    let proj = new Project();
+
+    // Set a property with a getter
+    proj.set("apples", "$(color)");
+    proj.set("color", "red");
+    assert.equal(proj.apples, "red");
+
+    // Extend the property using the old value
+    proj.set("apples", (p) => `${p} and green`);
+    assert.equal(proj.apples, "red and green");
+
+    // Extended property should pick up changes to the 
+    // original property value.
+    proj.set("color", "yellow");
+    assert.equal(proj.apples, "yellow and green");
+})
+
+
+
+
+test("prop: dynamic property extension", (t) =>
+{
+    let proj = new Project();
+
+    // Define "libs" variable
+    let stdlibs = ["a", "b"];
+    proj.set("libs", () => stdlibs);
+    assert.deepEqual(proj.libs, ["a", "b"]);
+
+    // Add some libraries
+    proj.set("libs", (p) => [...p, "c", "d" ]);
+    assert.deepEqual(proj.libs, ["a", "b", "c", "d"]);
+
+    // Change the standard libraries
+    stdlibs.push("x", "y")
+    assert.deepEqual(proj.libs, ["a", "b", "x", "y", "c", "d"]);
+
+    // Remove some libraries
+    proj.set("libs", (p) => p.filter(x => !x.match(/y|c/)));
+    assert.deepEqual(proj.libs, ["a", "b", "x", "d"]);
+})
+

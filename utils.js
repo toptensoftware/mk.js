@@ -13,8 +13,6 @@ export function ensureArray(x)
 
 export function changeExtension(filename, newExt)
 {
-    if (newExt == "")
-        debugger;
     const parsed = path.parse(filename);
     parsed.ext = (!newExt || newExt.startsWith(".") || newExt == "") ? newExt : "." + newExt;
     parsed.base = parsed.name + parsed.ext;

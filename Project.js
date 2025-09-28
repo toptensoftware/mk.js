@@ -4,9 +4,11 @@ import { mkdirSync } from 'node:fs';
 import { EventEmitter } from 'node:events';
 import { homedir } from 'node:os';
 import { globSync } from 'glob';
-import { UserError, run, fileTime, quotedJoin, escapeRegExp, ensureArray, quotedSplit, isDirectory } from "./utils.js";
+import { toPosix, UserError, run, fileTime, quotedJoin, escapeRegExp, ensureArray, quotedSplit, isDirectory } from "./utils.js";
 
 const __dirname = ospath.dirname(fileURLToPath(import.meta.url));
+
+let lastProj;
 
 export class Project extends EventEmitter
 {
@@ -694,7 +696,17 @@ export class Project extends EventEmitter
                     {
                         // Log file build....
                         if (finalMRule.isFileTarget)
+                        {
+                            if (this != lastProj)
+                            {
+                                if (lastProj)
+                                    this.log(1, ``);
+                                lastProj = this;
+                                //this.log(1, `${"project".padStart(10, ' ')}: ${this.projectName} (./${path.relative(toPosix(process.cwd()), lastProjDir)})`);
+                                this.log(1, `----- ${this.projectName} (./${path.relative(toPosix(process.cwd()), this.projectDir)}) -----`);
+                            }
                             this.log(1, `${(finalMRule.primaryRule.name ?? "running").padStart(10, ' ')}: ${this.eval(finalMRule.primaryRule.subject) ?? target} `);
+                        }
 //                        else
 //                            this.log(1, `${finalMRule.primaryRule.name}`);
 

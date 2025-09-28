@@ -708,7 +708,7 @@ export class Project extends EventEmitter
                                 //this.log(1, `${"project".padStart(10, ' ')}: ${this.projectName} (./${path.relative(toPosix(process.cwd()), lastProjDir)})`);
                                 this.log(1, `----- ${this.projectName} (./${path.relative(toPosix(process.cwd()), this.projectDir)}) -----`);
                             }
-                            this.log(1, `${(finalMRule.primaryRule.name ?? "running").padStart(10, ' ')}: ${this.eval(finalMRule.primaryRule.subject) ?? target} `);
+                            this.log(1, `${(finalMRule.primaryRule.name ?? "creating").padStart(10, ' ')}: ${this.eval(finalMRule.primaryRule.subject) ?? target} `);
                         }
 //                        else
 //                            this.log(1, `${finalMRule.primaryRule.name}`);

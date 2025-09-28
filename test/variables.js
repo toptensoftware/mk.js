@@ -3,54 +3,6 @@ import { strict as assert } from "node:assert";
 
 import { Project } from "../Project.js";
 
-test("eval: simple", (t) =>
-{
-    let proj = new Project();
-    assert.equal(proj.eval(true), true);
-    assert.equal(proj.eval(42), 42);
-    assert.equal(proj.eval("hello"), "hello");
-    assert.deepEqual(proj.eval(["a", "b", "c"]), [ "a", "b", "c" ]);
-});
-
-test("eval: callback", (t) =>
-{
-    let proj = new Project();
-    assert.equal(proj.eval(() => true), true);
-    assert.equal(proj.eval(() => 42), 42);
-    assert.equal(proj.eval(() => "hello"), "hello");
-    assert.deepEqual(proj.eval(() => [() => "a", () => "b", () => "c"]), [ "a", "b", "c" ]);
-});
-
-test("eval: expand", (t) =>
-{
-    let proj = new Project();
-    proj.set({
-        greeting: "Hello",
-        subject: "World"
-    });
-    assert.equal(proj.eval("$(greeting) $(subject)"), "Hello World");
-});
-
-test("eval: expand callback", (t) =>
-{
-    let proj = new Project();
-    proj.set({
-        greeting: "Hello",
-        subject: "World"
-    });
-    assert.equal(proj.eval(() => "$(greeting) $(subject)"), "Hello World");
-});
-
-test("eval: flatten", (t) =>
-{
-    let proj = new Project();
-    proj.set({
-        greeting: "Hello",
-        subject: "World"
-    });
-    assert.deepEqual(proj.eval([[1,2,3],[4,["$(greeting)",() => "$(subject)"]],[7,8]]), [[1,2,3],[4,["Hello","World"]],[7,8]]);
-});
-
 test("prop: simple", (t) =>
 {
     let proj = new Project();
@@ -70,21 +22,6 @@ test("prop: callback", (t) =>
         message: () => `${proj.greeting} ${proj.subject}`
     });
     assert.equal(proj.message, "Hello World");
-});
-
-test("prop: expand", (t) =>
-{
-    let proj = new Project();
-    proj.set({
-        recursive: "Hello",
-        greeting: "$(recursive)",
-        subject: "World",
-        intVal: 43,
-        boolVal: false,
-        arrayVal: [ "a", "b", "c d", [ 11, true ] ],
-        message: "$(greeting) $(subject) $(intVal) $(boolVal) $(arrayVal)"
-    });
-    assert.equal(proj.message, 'Hello World 43 false a b "c d" 11 true');
 });
 
 test("prop: callback with this", (t) =>
@@ -113,28 +50,6 @@ test("prop: redefine property", (t) =>
 });
 
 
-test("prop: expand arrays", (t) =>
-{
-    let proj = new Project();
-    proj.set({
-        greeting: "Hello",
-        subject: "World",
-        message: [ "$(greeting)", "$(subject)" ],
-    });
-    assert.deepEqual(proj.message, [ "Hello", "World" ]);
-})
-
-test("prop: expand arrays from callbacks", (t) =>
-{
-    let proj = new Project();
-    proj.set({
-        greeting: "Hello",
-        subject: "World",
-        message: () => [ "$(greeting)", [ "$(subject)", "!!!" ] ],
-    });
-    assert.deepEqual(proj.message, [ "Hello", [ "World", "!!!" ] ]);
-})
-
 
 test("prop: props on other objects", (t) =>
 {
@@ -151,8 +66,7 @@ test("prop: props on other objects", (t) =>
     proj.createProperty(other, "message", function(p) { 
         // 'this' refers to 'other' object
         // 'p' refers to the project the property was created through
-        // $(vars) are expanded against the project
-        return `${p.greeting} $(subject)${this.punct}`;
+        return `${p.greeting} ${p.subject}${this.punct}`;
     });
 
     assert.equal(other.message, "Hello World!!!");
@@ -195,29 +109,6 @@ test("prop: dynamic property extension", (t) =>
     color = "yellow";
     assert.equal(proj.apples, "yellow and green");
 })
-
-
-test("prop: dynamic property extension 2", (t) =>
-{
-    let proj = new Project();
-
-    // Set a property with a getter
-    proj.set("apples", "$(color)");
-    proj.set("color", "red");
-    assert.equal(proj.apples, "red");
-
-    // Extend the property using the old value
-    proj.set("apples", (p) => `${p} and green`);
-    assert.equal(proj.apples, "red and green");
-
-    // Extended property should pick up changes to the 
-    // original property value.
-    proj.set("color", "yellow");
-    assert.equal(proj.apples, "yellow and green");
-})
-
-
-
 
 test("prop: dynamic property extension", (t) =>
 {

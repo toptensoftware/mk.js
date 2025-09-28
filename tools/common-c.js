@@ -9,11 +9,11 @@ export default async function() {
         sourceDir: ".",
         projectKind: "exe",
         buildRoot: "./build",
-        buildDir: "$(buildRoot)/$(platform)/$(config)",
-        objDir: "$(buildDir)/obj",
-        outputDir: () => `$(buildDir)/${this.projectKind == 'lib' ? "lib" : "bin"}`,
-        outputFile: "$(outputDir)/$(outputName)",
-        sourceFiles: cache(() => this.glob("$(sourceDir)/*.{c,cpp,$(asm_extensions)}")),
+        buildDir: () => `${this.buildRoot}/${this.platform}/${this.config}`,
+        objDir: () => `${this.buildDir}/obj`,
+        outputDir: () => `${this.buildDir}/${this.projectKind == 'lib' ? "lib" : "bin"}`,
+        outputFile: () => `${this.outputDir}/${this.outputName}`,
+        sourceFiles: cache(() => this.glob(`${this.sourceDir}/*.{c,cpp,${this.asm_extensions}}`)),
         warningLevel: 3,
         define: [],
         includePath: [],
@@ -29,7 +29,11 @@ export default async function() {
     // Build target
     this.rule({
         name: "build",
-        deps: [ "build-sub-projects", "$(outputFile)", "copy-sub-project-runtimes" ],
+        deps: () => [ 
+            "build-sub-projects", 
+            this.outputFile, 
+            "copy-sub-project-runtimes" 
+        ],
     });
 
     // Build sub-projects target
@@ -59,8 +63,8 @@ export default async function() {
     // Clean target
     this.rule({
         name: "clean",
-        deps: [ "clean-sub-projects" ],
-        action: "rm -rf $(buildDir)"
+        deps: "clean-sub-projects",
+        action: () => `rm -rf ${this.buildDir}`
     });
 
     // Clean Sub Projects target
@@ -78,10 +82,10 @@ export default async function() {
     this.rule({
         name: "run",
         deps: "build",
-        action: {
-            cmdargs: "$(outputFile)",
+        action: () => ({
+            cmdargs: [ this.outputFile ],
             opts: { shell: false },
-        },
+        }),
         condition: () => this.projectKind == "exe",
     });
 }

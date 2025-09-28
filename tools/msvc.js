@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { posix as path, default as ospath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
-import { toPosix, toWindows, ensureArray, changeExtension } from "../utils.js";
+import { toPosix, toWindows, flatArray, changeExtension } from "../utils.js";
 
 const __dirname = ospath.dirname(fileURLToPath(import.meta.url));
 
@@ -108,7 +108,7 @@ export default async function() {
             }
             return undefined;
         },
-        outputName: "$(projectName).$(outputExtension)",
+        outputName: () => `${this.projectName}.${this.outputExtension}`,
         outputExtension: () => {
             switch (this.projectKind)
             {
@@ -130,19 +130,19 @@ export default async function() {
 
     // Assemble
     this.rule({
-        output: "$(objDir)/%.obj",
-        deps: "$(sourceDir)/%.asm",
+        output: () => `${this.objDir}/%.obj`,
+        deps: () => `${this.sourceDir}/%.asm`,
         name: "assemble",
         mkdir: true,
-        subject: "$(ruleFirstDep)",
+        subject: () => this.ruleFirstDep,
         needsBuild: checkHeaderDeps,
         action: () => this.exec({
             cmdargs: [
                 this.platform == "x86" ? "ml.exe" : "ml64.exe",
                 `/nologo`,
                 `/Zi`,
-                ensureArray(this.define).map(x => `/D${x}`),
-                ensureArray(this.includePath).map(x => `/I${x}`),
+                flatArray(this.define).map(x => `/D${x}`),
+                flatArray(this.includePath).map(x => `/I${x}`),
                 this.config == "debug"
                     ? [ "/D_DEBUG" ] 
                     : [ "/DNDEBUG"  ],
@@ -151,7 +151,7 @@ export default async function() {
                     : [ "/D_WIN64" ],
                 this.msvc_ml_args,
                 `/Fo${toWindows(this.ruleTarget)}`,
-                `/c`, "$(ruleFirstDep)",
+                `/c`, this.ruleFirstDep,
             ],
             opts: {
                 env: captureMsvcEnvironment(this.platform),
@@ -172,18 +172,18 @@ export default async function() {
             `/Zi`,
             `/Fd${path.dirname(this.ruleTarget) + "/"}`,
             `/showIncludes`,
-            `/W$(warningLevel)`,
+            `/W${this.warningLevel}`,
             `/Zc:wchar_t`,
             `/FC`,
-            ensureArray(this.define).map(x => `/d,${x}`),
-            ensureArray(this.includePath).map(x => `/I,${x}`),
+            flatArray(this.define).map(x => `/d,${x}`),
+            flatArray(this.includePath).map(x => `/I,${x}`),
             this.config == "debug"
-                ? [ "/D_DEBUG", "/Od", `/$(msvcrt)d` ] 
-                : [ "/DNDEBUG", "/O2", "/Oi", `/$(msvcrt)` ],
+                ? [ "/D_DEBUG", "/Od", `/${this.msvcrt}d` ] 
+                : [ "/DNDEBUG", "/O2", "/Oi", `/${this.msvcrt}` ],
             this.msvc_cl_args,
             pchFlags(),
-            '/c', "$(ruleFirstDep)",
-            `/Fo$(ruleTarget)`,
+            '/c', this.ruleFirstDep,
+            `/Fo${this.ruleTarget}`,
         ],
         opts: {
             env: captureMsvcEnvironment(this.platform),
@@ -193,29 +193,29 @@ export default async function() {
 
     // Compile C Code
     this.rule({
-        output: "$(objDir)/%.obj",
-        deps: "$(sourceDir)/%.c",
+        output: () => `${this.objDir}/%.obj`,
+        deps: () => `${this.sourceDir}/%.c`,
         name: "compile",
         mkdir: true,
-        subject: "$(ruleFirstDep)",
+        subject: () => this.ruleFirstDep,
         needsBuild: checkHeaderDeps,
         action: compile,
     });
 
     // Compile C++ Code
     this.rule({
-        output: "$(objDir)/%.obj",
-        deps: "$(sourceDir)/%.cpp",
+        output: () => `${this.objDir}/%.obj`,
+        deps: () => `${this.sourceDir}/%.cpp`,
         name: "compile",
         mkdir: true,
-        subject: "$(ruleFirstDep)",
+        subject: () => this.ruleFirstDep,
         needsBuild: checkHeaderDeps,
         action: compile,
     });
 
     // Link (.exe or .dll)
     this.rule({
-        output: "$(outputFile)",
+        output: () => this.outputFile,
         deps: () => pchSort(this.objFiles),
         name: "link",
         mkdir: true,
@@ -233,7 +233,7 @@ export default async function() {
                 this.ruleDeps,
                 this.ruleTarget.endsWith(".exe") ? [] : [ "/DLL" ],
                 this.msvc_link_args,
-                `/out:$(ruleTarget)`,
+                `/out:${this.ruleTarget}`,
                 `/pdb:${changeExtension(this.ruleTarget, ".pdb")}`
             ],
             opts: {
@@ -248,7 +248,7 @@ export default async function() {
 
     // Create library (.lib)
     this.rule({
-        output: "$(outputFile)",
+        output: () => this.outputFile,
         deps: () => this.objFiles,
         name: "lib",
         mkdir: true,
@@ -259,7 +259,7 @@ export default async function() {
                 `/nologo`,
                 this.ruleDeps,
                 this.msvc_lib_args,
-                `/out:$(ruleTarget)`,
+                `/out:${this.ruleTarget}`,
             ],
             opts: {
                 env: captureMsvcEnvironment(this.platform),

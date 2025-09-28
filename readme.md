@@ -33,13 +33,16 @@ export default async function()
     // Define some variables
     this.set({
         outputFile: "test.txt",
-        greeting: "Hello World",
+        greeting: "Hello",
+        subject: "World",
+        message: "$(greeting) $(subject)",
     });
 
-    // File rule create a file if it doesn't exist
+    // File rule to create a file if it doesn't exist
+    // (or if any of its input dependencies are newer)
     this.rule({
         output: "$(outputFile)",
-        action: "echo $(greeting) > $(outputFile)",
+        action: "echo $(message) > $(outputFile)",
     });
 
     // Named rule "build"
@@ -56,5 +59,48 @@ export default async function()
 }
 ```
 
-To run the script, from the command line just type `mk`
+Some notes about the above:
+
+* Variables are declared using the `set()` function so they
+  are available for string expansion.
+* File rules have an `output` property and optionally a `name`
+* Named rules have a `name` property and no `output` property
+* Rules can have file and named rule dependencies (aka prerequisites) 
+  that are specified by the `deps` property.
+* Rules have an optional `action` properties that specified things
+  to be done when the rule is invoked (eg: running commands)
+
+To run the script, from the command line run `mk` with
+no arguments.  Since no other targets are specified, mk.js
+will look for a rule named "build" and run it:
+
+```
+~/Projects/mk.js/sample (main)$ mk
+----- sample (./) -----
+  creating: test.txt
+
+~/Projects/mk.js/sample (main)$ cat test.txt
+Hello World
+```
+
+To run the "clean" rule, pass it as an argument.  
+
+(Note the clean rule doesn't produce any output, because by default
+only file rules produce output).
+
+```
+~/Projects/mk.js/sample (main)$ mk clean
+
+~/Projects/mk.js/sample (main)$
+```
+
+To run the "clean" rule, then the "build" rule:
+
+```
+~/Projects/mk.js/sample (main)$ mk clean build
+----- sample (./) -----
+  creating: test.txt
+
+~/Projects/mk.js/sample (main)$
+```
 

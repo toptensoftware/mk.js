@@ -9,7 +9,7 @@ export class UserError extends Error
         super(message);
     }
 }
-export function ensureArray(x)
+export function flatArray(x)
 {
     if (Array.isArray(x))
         return x.flat(Infinity);
@@ -24,13 +24,6 @@ export function changeExtension(filename, newExt)
     parsed.ext = (!newExt || newExt.startsWith(".") || newExt == "") ? newExt : "." + newExt;
     parsed.base = parsed.name + parsed.ext;
     return path.format(parsed);
-}
-
-export function resolve(str, resolveVar)
-{
-    if (typeof(str) === "number")
-        str = "" + str;
-    return str.replace(/\$\(([^)]+)\)/g, (_, key) => resolveVar(key));
 }
 
 export function quotedJoin(arr)

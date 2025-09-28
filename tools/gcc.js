@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { posix as path, default as ospath } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ensureArray, changeExtension, splitEscapedSpaces } from "../utils.js";
+import { flatArray, changeExtension, splitEscapedSpaces } from "../utils.js";
 
 const __dirname = ospath.dirname(fileURLToPath(import.meta.url));
 
@@ -68,15 +68,15 @@ export default async function() {
             switch (this.projectKind)
             {
                 case "exe": 
-                    return "$(projectName)";
+                    return this.projectName;
 
                 case "so":
                 case "dll":
-                    return "lib$(projectName).so";
+                    return `lib${this.projectName}.so`;
                     
                 case "lib":
                 case "a":
-                    return "lib$(projectName).a";
+                    return `lib${this.projectName}.a`;
             }
             throw new Error(`Unknown project kind: ${this.projectKind}.  Expected 'exe', 'so'/'dll' or 'lib'/'a'"`)
         }
@@ -84,112 +84,112 @@ export default async function() {
 
     // Assamble s and S
     let asmRule = {
-        output: "$(objDir)/%.o",
+        output: () => `${this.objDir}/%.o`,
         // deps: see below
         name: "assemble",
         mkdir: true,
-        subject: "$(ruleFirstDep)",
+        subject: () => this.ruleFirstDep,
         needsBuild: checkHeaderDeps,
         action: async () => {
 
             // Assemble file
             await this.exec([
-                `$(gcc_prefix)gcc`,
+                `${this.gcc_prefix}gcc`,
                 this.config == "debug"
                     ? [ "-D_DEBUG" ] 
                     : [ "-DNDEBUG" ],
                 this.gcc_args,
                 this.gcc_warn_args,
                 this.gcc_as_args,
-                ensureArray(this.define).map(x => `-D${x}`),
-                ensureArray(this.includePath).map(x => `-I ${x}`),
-                `-o`, '$(ruleTarget)',
-                `-c`, `$(ruleFirstDep)`,
+                flatArray(this.define).map(x => `-D${x}`),
+                flatArray(this.includePath).map(x => `-I ${x}`),
+                `-o`, this.ruleTarget,
+                `-c`, this.firstRuleDep,
             ]);
 
             // Use C preprocessor to generate .d file
             await this.exec([
-                `$(gcc_prefix)cpp`,
+                `${this.gcc_prefix}cpp`,
                 `-M`,
-                `-MT`, `$(ruleTarget)`,
+                `-MT`, this.ruleTarget,
                 this.config == "debug"
                     ? [ "-D_DEBUG" ] 
                     : [ "-DNDEBUG" ],
-                ensureArray(this.define).map(x => `-D${x}`),
-                ensureArray(this.includePath).map(x => `-I ${x}`),
-                `$(ruleFirstDep)`,
+                flatArray(this.define).map(x => `-D${x}`),
+                flatArray(this.includePath).map(x => `-I ${x}`),
+                this.ruleFirstDep,
                 ">", changeExtension(this.ruleTarget, "d")
             ]);
 
         },
     };
-    this.rule(Object.assign({}, asmRule, { deps: "$(sourceDir)/%.s" }));
-    this.rule(Object.assign({}, asmRule, { deps: "$(sourceDir)/%.S" }));
+    this.rule(Object.assign({}, asmRule, { deps: () => `${this.sourceDir}/%.s` }));
+    this.rule(Object.assign({}, asmRule, { deps: () => `${this.sourceDir}/%.S` }));
 
     // Compile C Code
     this.rule({
-        output: "$(objDir)/%.o",
-        deps: "$(sourceDir)/%.c",
+        output: () => `${this.objDir}/%.o`,
+        deps: () => `${this.sourceDir}/%.c`,
         name: "compile",
         mkdir: true,
-        subject: "$(ruleFirstDep)",
+        subject: () => this.ruleFirstDep,
         needsBuild: checkHeaderDeps,
         action: () => this.exec([
-            `$(gcc_prefix)gcc`,
+            `${this.gcc_prefix}gcc`,
             this.config == "debug"
                 ? [ "-D_DEBUG", "-O0" ] 
                 : [ "-DNDEBUG", "-O2" ],
             this.gcc_args,
             this.gcc_warn_args,
             this.gcc_c_args,
-            ensureArray(this.define).map(x => `-D${x}`),
-            ensureArray(this.includePath).map(x => `-I ${x}`),
-            `--std=$(gcc_c_standard)`,
-            `-MD`, `-MF`, changeExtension(this.ruleTarget, "d"), `-MT`, `$(ruleTarget)`, `-MP`, 
-            `-o`, '$(ruleTarget)',
-            `-c`, `$(ruleFirstDep)`,
+            flatArray(this.define).map(x => `-D${x}`),
+            flatArray(this.includePath).map(x => `-I ${x}`),
+            `--std=${this.gcc_c_standard}`,
+            `-MD`, `-MF`, changeExtension(this.ruleTarget, "d"), `-MT`, this.ruleTarget, `-MP`, 
+            `-o`, this.ruleTarget,
+            `-c`, this.ruleFirstDep,
         ]),
     });
 
     // Compile C++ Code
     this.rule({
-        output: "$(objDir)/%.o",
-        deps: "$(sourceDir)/%.cpp",
+        output: () => `${this.objDir}/%.o`,
+        deps: () => `${this.sourceDir}/%.cpp`,
         name: "compile",
         mkdir: true,
-        subject: "$(ruleFirstDep)",
+        subject: () => this.ruleFirstDep,
         needsBuild: checkHeaderDeps,
         action: () => this.exec([
-            `$(gcc_prefix)g++`,
+            `${this.gcc_prefix}g++`,
             this.config == "debug"
                 ? [ "-D_DEBUG", "-O0" ] 
                 : [ "-DNDEBUG", "-O2" ],
             this.gcc_args,
             this.gcc_warn_args,
             this.gcc_cpp_args,
-            ensureArray(this.define).map(x => `-D${x}`),
-            ensureArray(this.includePath).map(x => `-I ${x}`),
-            `-MD`, `-MF`, changeExtension(this.ruleTarget, "d"), `-MT`, `$(ruleTarget)`, `-MP`, 
-            `-o`, '$(ruleTarget)'
-            `$(ruleFirstDep)`,
+            flatArray(this.define).map(x => `-D${x}`),
+            flatArray(this.includePath).map(x => `-I ${x}`),
+            `-MD`, `-MF`, changeExtension(this.ruleTarget, "d"), `-MT`, this.ruleTarget, `-MP`, 
+            `-o`, this.ruleTarget,
+            this.ruleFirstDep,
         ]),
     });
 
     // Link (executable or so)
     this.rule({
-        output: "$(outputFile)",
+        output: () => this.outputFile,
         deps: () => this.objFiles,
         name: "link",
         mkdir: true,
         condition: () => !this.projectKind.match(/lib|a/),
         action: () => this.exec([
-            `$(gcc_prefix)g++`,
+            `${this.gcc_prefix}g++`,
             this.gcc_link_args,
             () => this.projectKind == "exe" ? `-Wl,-rpath,'$ORIGIN'` : undefined,
             this.projectKind.match(/dll|so/) ? 
                 [ `-shared`, `-Wl,-soname,${path.basename(this.ruleTarget)}` ] :
                 [],
-            `-o`, `$(ruleTarget)`,
+            `-o`, this.ruleTarget,
             this.ruleDeps,
             this.libs,
             this.subProjectLibs,
@@ -198,15 +198,15 @@ export default async function() {
 
     // Create library (.lib)
     this.rule({
-        output: "$(outputFile)",
+        output: () => this.outputFile,
         deps: () => this.objFiles,
         name: "lib",
         mkdir: true,
         condition: () => !!this.projectKind.match(/lib|a/),
         action: () => this.exec([
-            `$(gcc_prefix)ar`,
+            `${this.gcc_prefix}ar`,
             `cr`, 
-            `$(ruleTarget)`,
+            this.ruleTarget,
             this.ruleDeps,
             this.gcc_ar_args,
         ])

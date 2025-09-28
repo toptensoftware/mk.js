@@ -4,7 +4,7 @@ import { mkdirSync } from 'node:fs';
 import { EventEmitter } from 'node:events';
 import { homedir } from 'node:os';
 import { globSync } from 'glob';
-import { toPosix, UserError, run, fileTime, quotedJoin, escapeRegExp, ensureArray, quotedSplit, isDirectory } from "./utils.js";
+import { toPosix, UserError, run, fileTime, quotedJoin, escapeRegExp, flatArray, quotedSplit, isDirectory } from "./utils.js";
 
 const __dirname = ospath.dirname(fileURLToPath(import.meta.url));
 
@@ -15,6 +15,9 @@ export class Project extends EventEmitter
     constructor()
     {
         super();
+        this.projectDir = path.resolve(".");
+        this.projectName = path.basename(this.projectDir);
+        this.useBaseDir = this.projectDir;
     }
 
     // Default mkopts
@@ -80,7 +83,7 @@ export class Project extends EventEmitter
     async loadSubProject(mkfile, mkopts)
     {
         // Resolve mkfile relative to this project
-        mkfile = path.resolve(this.projectDir, this.eval(mkfile));
+        mkfile = path.resolve(this.projectDir, mkfile);
 
         // Resolve options
         mkopts = Object.assign({}, this.mkopts, { dir: null, set: {} }, mkopts)
@@ -94,6 +97,7 @@ export class Project extends EventEmitter
     // Rules for this project
     rules = [];
 
+/*
     // Evaluate a value by invoking callbacks, and expanding strings
     // val - the value to evaluate
     // [callbackThis] - the value of "this" for callbacks (this if unspecified)
@@ -125,25 +129,39 @@ export class Project extends EventEmitter
 
         return val;
     }
+*/
+
+    // Deref a value by invoking callbacks
+    // val - the value to deref
+    // [callbackThis] - the value of "this" for callbacks (this if unspecified)
+    /*
+    deref(val, callbackThis)
+    {
+        if (typeof(val) === "function")
+        {
+            if (callbackThis === undefined)
+                return val.call(this);
+            else
+                return val.call(callbackThis, this);
+        }
+
+        return val;
+    }
+    */
 
     // Create a property on 'object', named 'key' with
-    // value 'val' that will be this.eval'd each acces
+    // value 'val', where val can be a callback
     createProperty(object, key, val)
     {
         if (key in Object.getPrototypeOf(object))
             throw new UserError(`Can't override built-in property '${key}'`);
 
-
-        let self = this;
-
-        // Is it a type that needs evaluating?
-        if (Array.isArray(val) || 
-            (typeof(val) === 'string' && val.indexOf("$(") >= 0)  ||
-            typeof(val) === 'function' ||
-            typeof(val) === 'object')
+        // Callback
+        if (typeof(val) === 'function')
         {
+            let self = this;
             Object.defineProperty(object, key, {
-                get: function() { return self.eval(val, object) },
+                get: function() { return val.call(object, self) },
                 enumerable: true,
                 configurable: true
             });
@@ -249,12 +267,13 @@ export class Project extends EventEmitter
     // Register a rule for this project
     rule(rule)
     {        
-        // Convert properties that need evaluation accessor functions
+        // Convert callback properties to getters
         this.createProperty(rule, "name", rule.name);
         this.createProperty(rule, "output", rule.output);
         this.createProperty(rule, "deps", rule.deps);
         this.createProperty(rule, "condition", rule.condition);
         this.createProperty(rule, "mkdir", rule.mkdir);
+        this.createProperty(rule, "subject", rule.subject);
 
         // Capture location
         /*
@@ -352,7 +371,6 @@ export class Project extends EventEmitter
             posix: true,
         }, options);
 
-        pattern = this.eval(pattern);
         return globSync(pattern, opts);
     }
 
@@ -368,7 +386,6 @@ export class Project extends EventEmitter
 
     // Get the modification time of a file, or 0 if it doesn't exist
     // Override for mock file testing
-    // filename should be expanded
     mtime(filename)
     {
         if (this.mkopts.dryrun)
@@ -383,7 +400,6 @@ export class Project extends EventEmitter
 
     // Can this project build a file?
     // Either has a rule, or the file exists
-    // filename should be expanded
     canBuild(filename)
     {
         var rules = this.findRules(filename);
@@ -393,7 +409,6 @@ export class Project extends EventEmitter
     }
 
     // Find all rules for a target
-    // filename should be fully expanded
     findRules(target)
     {
         let rules = [];
@@ -454,7 +469,7 @@ export class Project extends EventEmitter
                     // Infer rule from pattern
                     inferred = Object.assign({}, rule, {
                         output: target,
-                        deps: ensureArray(rule.deps).map(x => x.replace(/\%/g, () => m[1])),
+                        deps: flatArray(rule.deps).map(x => x.replace(/\%/g, () => m[1])),
                     });
                 }
 
@@ -479,7 +494,7 @@ export class Project extends EventEmitter
         // Build all targets
         for (let t of targets)
         {
-            await this.buildTarget(this.eval(t));
+            await this.buildTarget(t);
         }
 
         if (this.mkopts.dryrun)
@@ -494,9 +509,6 @@ export class Project extends EventEmitter
     // Build a single target
     async buildTarget(target)
     {
-        // Eval the filename
-        target = this.eval(target);
-
         // If target  has already been built, then don't need to redo it return
         // the same result as last time
         let result = this.#builtTargets.get(target);
@@ -560,7 +572,7 @@ export class Project extends EventEmitter
 
                 // Combine deps
                 // Action rule inputs go at the start
-                mrule.deps.unshift(...ensureArray(rule.deps).flat(Infinity));
+                mrule.deps.unshift(...flatArray(rule.deps));
 
                 // Store the primary fule
                 mrule.primaryRule = rule;
@@ -569,7 +581,7 @@ export class Project extends EventEmitter
             {
                 // Combine deps
                 // Non-action rule inputs go at the end
-                mrule.deps.push(...ensureArray(rule.deps).flat(Infinity));
+                mrule.deps.push(...flatArray(rule.deps));
             }
 
             // Add to list of rules
@@ -694,7 +706,7 @@ export class Project extends EventEmitter
                 // Have actions?
                 if (finalMRule.primaryRule)
                 {
-                    let actions = ensureArray(finalMRule.primaryRule.action);
+                    let actions = flatArray(finalMRule.primaryRule.action);
                     if (actions.length > 0)
                     {
                         // Log file build....
@@ -708,7 +720,7 @@ export class Project extends EventEmitter
                                 //this.log(1, `${"project".padStart(10, ' ')}: ${this.projectName} (./${path.relative(toPosix(process.cwd()), lastProjDir)})`);
                                 this.log(1, `----- ${this.projectName} (./${path.relative(toPosix(process.cwd()), this.projectDir)}) -----`);
                             }
-                            this.log(1, `${(finalMRule.primaryRule.name ?? "creating").padStart(10, ' ')}: ${this.eval(finalMRule.primaryRule.subject) ?? target} `);
+                            this.log(1, `${(finalMRule.primaryRule.name ?? "creating").padStart(10, ' ')}: ${finalMRule.primaryRule.subject ?? target} `);
                         }
 //                        else
 //                            this.log(1, `${finalMRule.primaryRule.name}`);
@@ -756,7 +768,9 @@ export class Project extends EventEmitter
         // Callback function?
         if (typeof(cmd) === 'function')
         {
-            return await cmd.call(this, this.currentRule, opts);
+            cmd = await cmd.call(this, this.currentRule, opts);
+            if (!cmd)
+                return;
         }   
 
         // Handle different cmd types
@@ -764,21 +778,21 @@ export class Project extends EventEmitter
         if (typeof(cmd) === 'string')
         {
             // eg: "ls -al"
-            cmdargs = quotedSplit(this.eval(cmd));
+            cmdargs = quotedSplit(cmd);
         }
         else if (Array.isArray(cmd))
         {
             // eg: ["ls", "-al"]
-            cmdargs = ensureArray(this.eval(cmd));
+            cmdargs = flatArray(cmd);
         }
         else if (cmd.cmdargs)
         {
             if (typeof(cmd.cmdargs) === 'string')
                 // eg: { cmdargs: "ls -al", opts: { cwd: "/" } }
-                cmdargs = quotedSplit(this.eval(cmd.cmdargs));
+                cmdargs = quotedSplit(this.cmd.cmdargs);
             else    
                 // eg: { cmdargs: [ "ls", "-al" ], opts: { cwd: "/" } ]
-                cmdargs = ensureArray(this.eval(cmd.cmdargs));
+                cmdargs = flatArray(cmd.cmdargs);
 
             Object.assign(opts, cmd.opts);
         }

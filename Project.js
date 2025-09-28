@@ -2,8 +2,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { posix as path, default as ospath } from "node:path";
 import { mkdirSync } from 'node:fs';
 import { EventEmitter } from 'node:events';
+import { homedir } from 'node:os';
 import { globSync } from 'glob';
-import { run, fileTime, quotedJoin, escapeRegExp, ensureArray, quotedSplit, isDirectory } from "./utils.js";
+import { UserError, run, fileTime, quotedJoin, escapeRegExp, ensureArray, quotedSplit, isDirectory } from "./utils.js";
 
 const __dirname = ospath.dirname(fileURLToPath(import.meta.url));
 
@@ -38,14 +39,11 @@ export class Project extends EventEmitter
     {
         // Check not already loaded
         if (this.projectFile)
-            throw new Error("Project already loaded");
+            throw new UserError("Project already loaded");
 
         // Merge options
         Object.assign(this.mkopts, mkopts);
 
-        // Add the standard tools path
-        this.mkopts.libPath.push(path.join(__dirname, "tools"));
-        
         // Set globals and vars
         this.set(this.mkopts.globals);
         this.set(this.mkopts.set);
@@ -128,7 +126,7 @@ export class Project extends EventEmitter
     createProperty(object, key, val)
     {
         if (key in Object.getPrototypeOf(object))
-            throw new Error(`Can't override built-in property '${key}'`);
+            throw new UserError(`Can't override built-in property '${key}'`);
 
 
         let self = this;
@@ -284,7 +282,7 @@ export class Project extends EventEmitter
         }
 
         if (typeof(item) !== 'string')
-            throw new Error("use() requires a string or callback that resolves to a string");
+            throw new UserError("use() requires a string or callback that resolves to a string");
 
         // Resolve .js file
         let jsFile;
@@ -292,19 +290,39 @@ export class Project extends EventEmitter
         {
             // Load relative to project
             jsFile = path.join(this.useBaseDir, item);
+
+            // Check it exists
+            if (this.mtime(jsFile) == 0)
+                throw new UserError(`File '${jsFile}" not found`);
         }
         else
         {
+            // Setup full search path
+            let libPath = [
+                ...this.mkopts.libPath,
+                path.join(__dirname, "tools"),
+                path.join(homedir(), "mk.js"),
+            ];
+
+            // Check ends with ".js"
+            let originalItem = item;
+            if (!item.endsWith(".js"))
+                item += ".js";
+
             // Search on lib path
-            for (let libDir of this.mkopts.libPath)
+            for (let libDir of libPath)
             {
-                let p = path.join(libDir, item + ".js");
+                let p = path.join(libDir, item);
                 if (fileTime(p) !== 0)
                 {
                     jsFile = p;
                     break;
                 }
             }
+
+            if (!jsFile)
+                throw new UserError(`Can't find library '${originalItem}"`);
+
         }
 
         // Load and call
@@ -527,13 +545,13 @@ export class Project extends EventEmitter
             if (mrule.isFileTarget === undefined)
                 mrule.isFileTarget = isFileTarget;
             else if (mrule.isFileTarget !== isFileTarget)
-                throw new Error(`Rule conflict: target '${target}' matches both named (non-file) and file rules`);
+                throw new UserError(`Rule conflict: target '${target}' matches both named (non-file) and file rules`);
 
             // Only one rule can have an action
             if (rule.action)
             {
                 if (mrule.primaryRule)
-                    throw new Error(`Multiple rules have actions for target '${target}'`);
+                    throw new UserError(`Multiple rules have actions for target '${target}'`);
 
                 // Combine deps
                 // Action rule inputs go at the start
@@ -596,7 +614,7 @@ export class Project extends EventEmitter
             }
             else if (candidateRules.length > 1)
             {
-                throw new Error(`Multiple inferred rules match file '${target}'`);
+                throw new UserError(`Multiple inferred rules match file '${target}'`);
             }
         }
 
@@ -607,7 +625,7 @@ export class Project extends EventEmitter
             if (this.mtime(target) != 0)
                 return false;
 
-            throw new Error(`No rule for target '${target}'`);
+            throw new UserError(`No rule for target '${target}'`);
         }
 
         // Build dependencies
@@ -676,7 +694,7 @@ export class Project extends EventEmitter
                     {
                         // Log file build....
                         if (finalMRule.isFileTarget)
-                            this.log(1, `${finalMRule.primaryRule.name ?? "running"}: ${this.eval(finalMRule.primaryRule.subject) ?? target} `);
+                            this.log(1, `${(finalMRule.primaryRule.name ?? "running").padStart(10, ' ')}: ${this.eval(finalMRule.primaryRule.subject) ?? target} `);
 //                        else
 //                            this.log(1, `${finalMRule.primaryRule.name}`);
 
@@ -751,7 +769,7 @@ export class Project extends EventEmitter
         }
         else
         {
-            throw new Error(`Don't know how to exec '${cmd}'`)
+            throw new UserError(`Don't know how to exec '${cmd}'`)
         }
 
         // Object with cmdargs

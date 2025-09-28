@@ -2,6 +2,13 @@ import fs from 'node:fs';
 import { posix as path, default as ospath } from 'node:path';
 import { spawn } from 'node:child_process';
 
+export class UserError extends Error
+{
+    constructor(message)
+    {
+        super(message);
+    }
+}
 export function ensureArray(x)
 {
     if (Array.isArray(x))
@@ -230,7 +237,7 @@ export function toString(val)
             return val.toString();
     }
 
-    throw new Error(`Cannot convert value to string: ${val}`);  
+    throw new UserError(`Cannot convert value to string: ${val}`);  
 }
 
 export function toBool(val)
@@ -378,3 +385,5 @@ export function splitEscapedSpaces(str)
 
     return result;
 }
+
+

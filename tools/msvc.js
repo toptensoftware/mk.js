@@ -155,6 +155,10 @@ export default async function() {
             ],
             opts: {
                 env: captureMsvcEnvironment(this.platform),
+                stdout: (line) => {
+                    if (line && !line.match(/^\s*Assembling:/))
+                        process.stdout.write(line + "\n");
+                },
             }
         })
     });
@@ -234,6 +238,10 @@ export default async function() {
             ],
             opts: {
                 env: captureMsvcEnvironment(this.platform),
+                stdout: (line) => {
+                    if (line && !line.match(/^\s*Creating library/))
+                        process.stdout.write(line + "\n");
+                },
             }
         })
     });

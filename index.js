@@ -2,8 +2,10 @@
 
 import { fileURLToPath } from 'node:url';
 import { posix as path, default as ospath } from "node:path";
-import { Project } from "./Project.js";
 import { clargs, showPackageVersion, showArgs } from "@toptensoftware/clargs";
+
+import { Project } from "./Project.js";
+import { UserError } from "./utils.js";
 
 const __dirname = ospath.dirname(fileURLToPath(import.meta.url));
 
@@ -111,9 +113,9 @@ try
 }
 catch (err)
 {
-    if (err.info)
+    if (err.info || err instanceof UserError)
     {
-        process.stderr.write(err.message + "\n");
+        process.stderr.write("\n" + err.stack + "\n\n");
         process.exit(7);
     }
     else

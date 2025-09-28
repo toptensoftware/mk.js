@@ -104,7 +104,7 @@ export default async function() {
                 flatArray(this.define).map(x => `-D${x}`),
                 flatArray(this.includePath).map(x => `-I ${x}`),
                 `-o`, this.ruleTarget,
-                `-c`, this.firstRuleDep,
+                `-c`, this.ruleFirstDep,
             ]);
 
             // Use C preprocessor to generate .d file
@@ -185,7 +185,7 @@ export default async function() {
         action: () => this.exec([
             `${this.gcc_prefix}g++`,
             this.gcc_link_args,
-            () => this.projectKind == "exe" ? `-Wl,-rpath,'$ORIGIN'` : undefined,
+            this.projectKind == "exe" ? `-Wl,-rpath,'$ORIGIN'` : undefined,
             this.projectKind.match(/dll|so/) ? 
                 [ `-shared`, `-Wl,-soname,${path.basename(this.ruleTarget)}` ] :
                 [],
@@ -200,7 +200,7 @@ export default async function() {
     this.rule({
         output: () => this.outputFile,
         deps: () => this.objFiles,
-        name: "lib",
+        name: "ar",
         mkdir: true,
         condition: () => !!this.projectKind.match(/lib|a/),
         action: () => this.exec([

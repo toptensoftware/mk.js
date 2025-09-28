@@ -12,8 +12,8 @@
                 "<node_internals>/**"
             ],
             "program": "${workspaceFolder}/index.js",
-            "args": [ "clean", "run" ],
-            "cwd": "${workspaceFolder}/testproj",
+            "args": [ "clean", "build" ],
+            "cwd": "${workspaceFolder}/sample",
             "outputCapture": "std",
         }
     ]

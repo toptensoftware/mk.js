@@ -6,24 +6,24 @@ export default async function()
         outputFile: "test.txt",
         greeting: "Hello",
         subject: "World",
-        message: "$(greeting) $(subject)",
+        message: () => `${this.greeting} ${this.subject}`,
     });
 
     // File rule create a file if it doesn't exist
     this.rule({
-        output: "$(outputFile)",
-        action: "echo $(message) > $(outputFile)",
+        output: () => this.outputFile,
+        action: () => `echo ${this.message} > ${this.outputFile}`,
     });
 
     // Named rule "build"
     this.rule({
         name: "build",
-        deps: [ "$(outputFile)" ],
+        deps: () => [ this.outputFile ],
     });
 
     // Named rule "clean"
     this.rule({
         name: "clean",
-        action: "rm $(outputFile)"
+        action: () => `rm -f ${this.outputFile}`,
     });
 }

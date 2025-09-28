@@ -63,6 +63,9 @@ export class Project extends EventEmitter
         this.projectName = path.basename(this.projectDir);
         this.useBaseDir = this.projectDir;
 
+        if (this.mtime(this.projectFile)==0)
+            throw new UserError(`Make script '${this.projectFile}' not found`);
+
         // Load and call module
         let module = await import(pathToFileURL(this.projectFile).href);
         await module.default.call(this);

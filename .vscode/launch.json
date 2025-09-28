@@ -13,7 +13,7 @@
             ],
             "program": "${workspaceFolder}/index.js",
             "args": [ "clean", "build" ],
-            "cwd": "${workspaceFolder}/testproj",
+            "cwd": "${workspaceFolder}/test",
             "outputCapture": "std",
         }
     ]

@@ -82,6 +82,7 @@ export default async function() {
     // Default variables
     this.default({
         platform: "x64",
+        asm_extensions: "asm",
         objFiles: () => this.sourceFiles.map(x => `${this.objDir}/${changeExtension(x, "obj")}`),
         msvcrt: "MD",
         linkLibrary: () => {
@@ -107,6 +108,7 @@ export default async function() {
             }
             return undefined;
         },
+        outputName: "$(projectName).$(outputExtension)",
         outputExtension: () => {
             switch (this.projectKind)
             {
@@ -381,7 +383,7 @@ export default async function() {
                 return true;
 
             // Read the .d file
-            let deps = fs.readFileSync(changeExtension(self.ruleTarget, ".d"), "utf8").split("\n")
+            let deps = fs.readFileSync(self.resolve(changeExtension(self.ruleTarget, ".d")), "utf8").split("\n")
 
             // Check each dep
             for (let dep of deps)

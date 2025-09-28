@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
 
-import { quotedJoin, quotedSplit, cache } from "../utils.js";
+import { quotedJoin, quotedSplit, cache, changeExtension } from "../utils.js";
 
 test("quoted: join", (t) =>
 {
@@ -32,5 +32,14 @@ test("quoted: once", (t) => {
     let result4 = fn();
     assert.notEqual(result3, result1);
     assert.equal(result3, result4);
+
+}); 
+
+
+test("changedExtension: normal", (t) => {
+
+    assert.equal(changeExtension("test.c", "obj"), "test.obj");
+    assert.equal(changeExtension("test.c", ""), "test");
+    assert.equal(changeExtension("test", "obj"), "test.obj");
 
 }); 

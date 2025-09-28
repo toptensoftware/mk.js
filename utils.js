@@ -13,8 +13,10 @@ export function ensureArray(x)
 
 export function changeExtension(filename, newExt)
 {
+    if (newExt == "")
+        debugger;
     const parsed = path.parse(filename);
-    parsed.ext = newExt.startsWith(".") ? newExt : "." + newExt;
+    parsed.ext = (!newExt || newExt.startsWith(".") || newExt == "") ? newExt : "." + newExt;
     parsed.base = parsed.name + parsed.ext;
     return path.format(parsed);
 }
@@ -329,4 +331,52 @@ export function toPosix(p)
 export function toWindows(p) 
 { 
     return p.replace(/\//g, "\\");
+}
+
+export function splitEscapedSpaces(str) 
+{
+    const result = [];
+    let current = '';
+    let escaping = false;
+
+    for (let i = 0; i < str.length; i++) 
+    {
+        const ch = str[i];
+
+        if (escaping)
+        {
+            // Handle escaped characters
+            if (ch === ' ') 
+            {
+                current += ' '; // escaped space
+            } else 
+            {
+                current += '\\' + ch; // keep unknown escapes as-is
+            }
+            escaping = false;
+        }
+        else if (ch === '\\') 
+        {
+            escaping = true; // next char may be escaped
+        }
+        else if (ch === ' ') 
+        {
+            if (current.length > 0) 
+            {
+                result.push(current);
+                current = '';
+            }
+        }
+        else 
+        {
+            current += ch;
+        }
+    }
+
+    if (current.length > 0) 
+    {
+        result.push(current);
+    }
+
+    return result;
 }

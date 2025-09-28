@@ -11,9 +11,9 @@
             "skipFiles": [
                 "<node_internals>/**"
             ],
-            "program": "${workspaceFolder}\\index.js",
-            "args": [ "--rebuild" ],
-            "cwd": "${workspaceFolder}\\testproj",
+            "program": "${workspaceFolder}/index.js",
+            "args": [ ],
+            "cwd": "${workspaceFolder}/testproj",
             "outputCapture": "std",
         }
     ]

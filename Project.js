@@ -719,7 +719,7 @@ export class Project extends EventEmitter
         else if (Array.isArray(cmd))
         {
             // eg: ["ls", "-al"]
-            cmdargs = this.eval(cmd);
+            cmdargs = ensureArray(this.eval(cmd));
         }
         else if (cmd.cmdargs)
         {

@@ -12,9 +12,9 @@ export default async function() {
         buildDir: "$(buildRoot)/$(platform)/$(config)",
         objDir: "$(buildDir)/obj",
         outputDir: () => `$(buildDir)/${this.projectKind == 'lib' ? "lib" : "bin"}`,
-        outputFile: "$(outputDir)/$(projectName).$(outputExtension)",
-        sourceFiles: cache(() => this.glob("$(sourceDir)/*.{c,cpp}")),
-        warningLevel: 1,
+        outputFile: "$(outputDir)/$(outputName)",
+        sourceFiles: cache(() => this.glob("$(sourceDir)/*.{c,cpp,$(asm_extensions)}")),
+        warningLevel: 3,
         define: [],
         includePath: [],
         subProjectLibs: () => Object.values(this.subProjects)

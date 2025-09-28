@@ -6,7 +6,7 @@
 #define EXPORT __attribute__((visibility("default")))
 #endif
 
-int sub(int a, int b)
+EXPORT int sub(int a, int b)
 {
     return a - b;
 }

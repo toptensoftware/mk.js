@@ -127,6 +127,39 @@ export default async function() {
         }
     });
 
+
+    // Assemble
+    this.rule({
+        output: "$(objDir)/%.obj",
+        deps: "$(sourceDir)/%.asm",
+        name: "assemble",
+        mkdir: true,
+        subject: "$(ruleFirstDep)",
+        needsBuild: checkHeaderDeps,
+        action: () => this.exec({
+            cmdargs: [
+                this.platform == "x86" ? "ml.exe" : "ml64.exe",
+                `/nologo`,
+                `/Zi`,
+                ensureArray(this.define).map(x => `/D${x}`),
+                ensureArray(this.includePath).map(x => `/I${x}`),
+                this.config == "debug"
+                    ? [ "/D_DEBUG" ] 
+                    : [ "/DNDEBUG"  ],
+                this.platform == "x86" 
+                    ? [ "/D_WIN32", `/coff` ]
+                    : [ "/D_WIN64" ],
+                this.msvc_ml_args,
+                `/Fo${toWindows(this.ruleTarget)}`,
+                `/c`, "$(ruleFirstDep)",
+            ],
+            opts: {
+                env: captureMsvcEnvironment(this.platform),
+            }
+        })
+    });
+
+
     // Callback lambda to compile a c or c++ file
     let compile = () => this.exec({
         cmdargs: [

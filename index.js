@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { fileURLToPath } from 'node:url';
 import { posix as path, default as ospath } from "node:path";
 import { Project } from "./Project.js";

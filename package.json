@@ -1,5 +1,6 @@
 {
   "name": "mk.js",
+  "description": "JavaScript based make system",
   "version": "0.0.1",
   "main": "index.js",
   "type": "module",
@@ -8,11 +9,22 @@
   },
   "author": "Topten Software",
   "copyright": "Copyright (C) 2025 Topten Software. All Rights Reserved",
-  "description": "JavaScript based build system",
-  "license": "Apache-2.0",
-  "imports": {
-    "#mk": "./mk.js"
+  "contributors": [
+    {
+      "name": "Brad Robinson",
+      "email": "contact@toptensoftware.com"
+    }
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/toptensoftware/mk.js"
   },
+  "license": "Apache-2.0",
+  "bin": {
+    "mk": "./index.js"
+  },
+  "keywords": [ "make", "build", "cli" ],
+  "preferGlobal": true,
   "dependencies": {
     "@toptensoftware/clargs": "github:toptensoftware/clargs",
     "glob": "^11.0.3"

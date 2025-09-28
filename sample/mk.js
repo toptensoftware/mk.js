@@ -4,13 +4,15 @@ export default async function()
     // Define some variables
     this.set({
         outputFile: "test.txt",
-        greeting: "Hello World",
+        greeting: "Hello",
+        subject: "World",
+        message: "$(greeting) $(subject)",
     });
 
     // File rule create a file if it doesn't exist
     this.rule({
         output: "$(outputFile)",
-        action: "echo $(greeting) > $(outputFile)",
+        action: "echo $(message) > $(outputFile)",
     });
 
     // Named rule "build"

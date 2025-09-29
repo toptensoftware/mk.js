@@ -22,18 +22,17 @@ export default async function() {
         ],
         gcc_warn_args: () => {
             // Approximately match msvc warning level to gcc warning groups
-            switch (this.warningLevel)
-            {
-                case 1:
-                    return [ '-Wall' ];
-                case 2:
-                    return [ '-Wall', '-Wextra' ];
-                case 3:
-                    return [ '-Wall', '-Wextra', '-Wpedantic' ];
-                case 4:
-                    return [ '-Wall', '-Wextra', '-Wpedantic', '-Wconversion', '-Wsign-conversion', '-Wshadow' ];
-            }
-            return [];
+            let r = [];
+            if (this.warningLevel >= 1)
+                r.push( '-Wall' );
+            if (this.warningLevel >= 2)
+                r.push('-Wextra' );
+            if (this.warningLevel >= 3)
+                r.push('-Wpedantic');
+            if (this.warningLevel >= 4)
+                r.push('-Wconversion', '-Wsign-conversion', '-Wshadow');
+            r.push("-Wno-unused-parameter")
+            return r;
         },
         gcc_c_standard: "c2x",
         gcc_as_args: [],

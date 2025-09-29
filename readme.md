@@ -66,7 +66,7 @@ Some notes about the above:
 * Rules can have file and named rule dependencies (aka prerequisites) 
   that are specified by the `deps` property.
 * Rules have an optional `action` property that specifies what to do
-  when the rule is invoked (eg: running commands)
+  when the rule is invoked (typically invoking external commands)
 
 To run the script, from the command line run `mk` with
 no arguments - mk.js will look for a rule named "build" and run it:
@@ -80,7 +80,7 @@ no arguments - mk.js will look for a rule named "build" and run it:
 Hello World
 ```
 
-To run the "clean" rule, pass it as an argument.  
+To run a different rule, pass it as an argument.  
 
 (Note the clean rule doesn't produce any output, because by default
 only file rules produce output).
@@ -117,8 +117,8 @@ To make the most of mk.js there are a few key concepts to learn:
 The mk.js `Project` class declares a set of variables, rules and
 sub-projects that comprise a build system.
 
-When the root `mk.js` project script is loaded, the default exported
-function is called, and passed a `Project` instance as `this`.
+When the root `mk.js` project script is loaded, its default exported
+function is called and passed a `Project` instance as `this`.
 
 ```js
 export default async function()
@@ -174,13 +174,13 @@ Rather:
 Care should be taken whenever a file path is used to actually access the file system
 to first resolve it against the project's directory. 
 
-To facilitate this, the project has a `resolve` method to produce a full path from a 
-relative path, and a `relative` method to produce a relative path (to the project) from 
+To facilitate this, the project has a `resolve()` method to produce a full path from a 
+relative path, and a `relative()` method to produce a relative path (to the project) from 
 a full path. 
 
 These methods should also be used when passing paths between projects and 
-sub-projects by first calling resolve (on the source project) and then relative (on 
-the target project).
+sub-projects by first calling `resolve()` on the source project and then `relative()` on 
+the target project.
 
 By not manipulating the `mk.js` process current working directory, multiple projects
 can all be loaded and processed within the one NodeJS process making it easy to 
@@ -281,7 +281,7 @@ this.set({
 assert.deepEqual(this.colors, [ "yellow", "red" ])
 ```
 
-or this:
+nor this:
 
 ```js
 // You probably don't want this :(
@@ -418,7 +418,7 @@ can't be found.  If multiple inferred rules match a file they are merged
 
 A rule can be conditionally included by specifying a `condition` property.
 
-For example, picks one rule depending on the output file type
+This example picks one rule depending on the output file type
 
 ```js
 
@@ -519,7 +519,7 @@ like this:
 
 ```js
 // (pseudo code)
-this.exec(rule.action)
+await this.exec(rule.action)
 ```
 
 The `exec` functions accepts any of the following:
@@ -556,8 +556,8 @@ this.rule({
 });
 ```
 
-Unlike the NodeJS functions that expect separate `cmd` and `args` parameters, `mk.js` expects these
-these in a single array where `cmd` is taken from `cmdargs[0]` and `args` from `cmdargs[1...]`.
+Unlike the NodeJS functions that expect separate `cmd` and `args` parameters, `mk.js` expects a `cmdargs` 
+array where `cmd` is taken from `cmdargs[0]` and `args` from `cmdargs[1...]`.
 
 
 ### Rule Merging
@@ -593,13 +593,13 @@ Rules support the following properties:
 
 The `Project` object include several build in variables:
 
-`projectFile` - the full path of the loaded `mk.js` file
-`projectName` - defaults to the name of the directory the project was loaded from
-`projectDir` - the full path of the directory the project was loaded from
-`subProjects` - a map of project name to project object of all loaded sub-projects
-`ruleTarget` - the target of the current rule
-`ruleDeps` - the dependencies of the current rule
-`ruleFirstDep` - the first dependency of the current ule
-`ruleUniqueDeps` - the dependencies of the current rule with duplicates removed
-`ruleStem` - the matching stem (aka: `%`) of an inferred rule
+* `projectFile` - the full path of the loaded `mk.js` file
+* `projectName` - defaults to the name of the directory the project was loaded from
+* `projectDir` - the full path of the directory the project was loaded from
+* `subProjects` - a map of project name to project object of all loaded sub-projects
+* `ruleTarget` - the target of the current rule
+* `ruleDeps` - the dependencies of the current rule
+* `ruleFirstDep` - the first dependency of the current ule
+* `ruleUniqueDeps` - the dependencies of the current rule with duplicates removed
+* `ruleStem` - the matching stem (aka: `%`) of an inferred rule
 

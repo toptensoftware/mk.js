@@ -1,4 +1,4 @@
-# mk.js - JavaScript Make Tool
+# mk.js - Javascript Based Build System
 
 ## Introduction
 
@@ -153,7 +153,7 @@ roughly map to command line arguments.  These can be passed to
 mkopts = {
     dir: null,      // project directory (defaults to mk.js directory)
     set: {},        // a set of variables for this project
-    globals: {},    // a set of variables for this project and all sub-projects
+    globals: {},    // a set of variables for this project and its sub-projects
     rebuild: false, // forces targets to build regardless of timestamps
     libPath: [],    // path to search for libraries
     dryrun: false,  // don't actually run executable tasks
@@ -190,7 +190,7 @@ pass variables and settings between a project and its sub-projects.
 
 ### Basics
 
-Variables are used to declare settings and customize a build.
+Variables declare settings to customize and configure a build.
 
 In the following examples you might be wondering why variables are declared the
 way they are instead of just using local JavaScript variables?
@@ -205,8 +205,8 @@ left as they are once the rules of the project start being processed.  Again, th
 idea is to declare a set of rules and variables and then let mk.js determine what
 needs to be done based on those declarations.
 
-Variables are properties of the `Project` instance and are set 
-using the `set()` method:
+Variables are set using the `set()` method and read as properties of the Project 
+object:
 
 ```js
 // Set a single property
@@ -236,9 +236,11 @@ this.default({
 assert.equal(this.apples, "red")
 ```
 
+Variables can be any JavaScript type. 
+
 ### Dynamic Variables
 
-Variables can be declared dynamically by using a lambda function:
+Dynamic variables can be declared with a lambda function:
 
 ```js
 // Dynamic property using a lambda
@@ -253,7 +255,6 @@ this.set({ apples: "green" })
 assert.equal(this.message, "apples are green")
 ```
 
-Variables can be any JavaScript type. 
 
 Note that callback lambdas in arrays and objects are not recursively called, so 
 to dynamically generate the content of the array do this:
@@ -323,9 +324,62 @@ assert.deepEqual(this.fruits, [ "apples", "pears", "bananas" ]);
 
 A similar approach using array `.filter()` can be used to remove values.
 
+
+### Local vs Global Variables
+
+mk.js supports two types of variables:
+
+* Local variable apply just to the current project.
+* Global variables apply to the current project and are automatically
+  passed through to any sub-projects that the project loads.
+
+Variables defined by the `set()` method inside a project are local 
+variables.
+
+Global variables are normally set using the command line.  eg: this
+command sets the `config` and `platform` global variables for the
+project being loaded and for any sub-project this project loads.
+
+```
+~/myproject/$ mk config=release platform=x64
+```
+
+To specify a local variable from the command line, prefix it with a period.
+
+eg: this will set the variable `localvar` for the top-level project, but 
+not the sub-projects.
+
+```
+~/myproject/$ mk .localvar=somevalue
+```
+
+When loading a sub-project (see the section on Sub Projects below) you
+can modify the global variables that are passed by setting using the 
+`globals` variable of the `mkopts` passed to the `loadProject` method
+
+eg:
+
+```js
+await this.loadSubProject("sub-project", {
+  globals: { 
+    // Additional variables to be passed to the sub-project 
+    // and any of its sub-project.  These will be merged with
+    // the current mkopts.globals of this project.
+    config: "release",
+    platform: "x64",
+  },
+  set: {
+    // Other variables for just the immediate sub-project.
+  }
+});
+```
+
+
+
+
 ## Rules
 
-There are two types of rules:
+mk.js supports two kinds types of rules:
 
 * Named rules - describe actions to be invoked
 * File rules - declare how a file is built
@@ -360,8 +414,8 @@ this.rule({
 
 ### File Rules
 
-File rules describe how to produce a file and only execute if the 
-target file doesn't exist, or is older than any of its dependencies.
+File rules describe how to produce a file and are only invoked if the 
+target file doesn't exist or is older than any of its dependencies.
 
 File rules have an `output` property that identifies the file the
 rule produces: 
@@ -442,8 +496,8 @@ this.rule({
 
 ### Automatically Creating Output Directories
 
-A file rule can ask for the output directory to be created by setting it's `mkdir` property
-to `true`.
+A file rule can request the file's output directory to be automatically created by setting 
+it's `mkdir` property to `true`.
 
 ```js
 this.rule({
@@ -459,12 +513,12 @@ this.rule({
 When a file rule is invoked, a message is output to the console describing the rule's name
 and the "subject" file.
 
-This is an informational only message to describe the file the action is working on. If the subject 
+This is an informational message to describe the file the action is working on. If the subject 
 property is not set, the rule's output is used.
 
 The primary reason for this property is to provide a nicer output message for compilation steps.  
 
-For example, without the subject property, the message for a compile step might would show
+For example, without the subject property, the message for a compile step might show
 the object file name:
 
 ```txt
@@ -497,8 +551,8 @@ If mk.js thinks a file is up to date, before skipping it, it will call the `need
 function to allow the rule one last chance to trigger the action.
 
 The main purpose for this is for C/C++ header file change detection checks.  Rather than
-generating rules for all the dependent .h files for a .c or .cpp file, this callback
-can be used to load a .d dependencies file from a previous compilation and manually check
+generating rules for all the dependent `.h` files for a `.c` or `.cpp` file, this callback
+can be used to load a `.d` dependencies file from a previous compilation and manually check
 for additional change triggers.
 
 ```js
@@ -588,6 +642,113 @@ Rules support the following properties:
 * `mkdir` - for file rules, if true creates the output file's directory if doesn't already exist.
 * `needsBuild` - called for files that wouldn't normally need to be built as an extra check to trigger the build.  
 
+
+## Libraries
+
+A library is a simple mechanism to import rule and variable definitions from 
+another file.  
+
+A library is imported using the `use()` function:
+
+```js
+export default async function()
+{
+    // Load library
+    await this.use("someLibrary");
+}
+```
+
+This will look for a file `someLibrary.js` in the following locations:
+
+1. the libPath as specified in mkopts (or via the command line)
+2. the users home directory: `~/.mk.js/`
+3. the built in tools directory (mk.js install location `./tools`)
+
+(Note this is an async operation and should be awaited)
+
+To import a local library, use a relative path and include the `.js` file 
+extension.  These paths will be resolved against the current project directory
+or the base directory of the current library being imported. (ie: nested
+`use()` calls resolve against the current directory of the file being 
+imported).
+
+```js
+export default async function()
+{
+    // Load library
+    await this.use("./tools/mylib.js");
+}
+```
+
+
+Implementing a library is the same as a regular `mk.js` file and should
+export a default function that is passed the project object:
+
+```js
+export default async function()
+{
+    this.set({ /* ... */ });
+    this.rule({ /* ... */ });
+    etc...
+}
+```
+
+Libraries can be used for shared variable declartions and rules and are often
+used to define entire tool chains.  eg: `mk.js` includes built-in toolchains
+for `msvc` and `gcc`.
+
+
+## Sub-Projects
+
+Sub-project provide an easy way to use other `mk.js` make scripts from a parent
+script.  To load a sub-project, use the `loadSubProject()` method:
+
+```js
+let mySubProject = await this.loadSubProject("my-sub-project")
+```
+
+`loadSubProject` looks for a `mk.js` file in the specified directory (relative
+to the parent project directory, loads it into a new `Project` object and
+returns the loaded project.
+
+Once loaded, the parent project can build targets on the sub-project.  Often
+this will be done in the action of a rule.
+
+```js
+this.rule({
+    name: "clean-sub-projects",
+    action: async () => await mySubProject.buildTarget("clean");
+})
+```
+
+All loaded projects are also available via the `subProjects` property which
+is a dictionary of project name to project instance.
+
+```js
+// Build all sub-projects
+this.rule({
+    name: "build-sub-projects",
+    action: async () => {
+        for (let sp of Object.values(this.subProjects))
+        {
+            await sp.buildTarget("build");
+        }
+    }
+})
+```
+
+The `loadSubProject` method also accepts a `mkopts` parameter
+that can be used to pass variables and other settings to the sub-project
+
+```js
+// Load a sub-project and set variables 'config' and 'platform'
+await this.loadSubProject("sub-project", {
+    set: {
+        config: "release",
+        platform: "x64",
+    }
+});
+```
 
 ## Built-in Variables
 

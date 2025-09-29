@@ -274,7 +274,7 @@ export class Project extends EventEmitter
             let libPath = [
                 ...this.mkopts.libPath,
                 path.join(__dirname, "tools"),
-                path.join(homedir(), "mk.js"),
+                path.join(homedir(), ".mk.js"),
             ];
 
             // Check ends with ".js"

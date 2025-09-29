@@ -437,27 +437,21 @@ export class Project extends EventEmitter
         return rules;
     }
 
-    // Build a list of targets
-    async buildTargets(targets)
-    {
-        // Build all targets
-        for (let t of targets)
-        {
-            await this.buildTarget(t);
-        }
-
-        if (this.mkopts.dryrun)
-        {
-            this.log(1, "## dry run, nothing updated");
-        }
-    }
-
-
     #builtTargets = new Map();
 
-    // Build a single target
-    async buildTarget(target)
+    // Make a single target
+    async make(target)
     {
+        if (Array.isArray(target))
+        {
+            // Build all targets
+            for (let t of targets)
+            {
+                await this.make(t);
+            }
+            return;
+        }
+
         // If target  has already been built, then don't need to redo it return
         // the same result as last time
         let result = this.#builtTargets.get(target);
@@ -465,7 +459,7 @@ export class Project extends EventEmitter
             return result;
 
         // Build it
-        result = await this.#buildTargetInternal(target);
+        result = await this.#makeInternal(target);
 
         // Remember it
         this.#builtTargets.set(target, result);
@@ -477,7 +471,7 @@ export class Project extends EventEmitter
     // - true if the file has rules
     // - false if the file has no rules but the file exists
     // If no rules, but file doesn't exist an exception is thrown
-    async #buildTargetInternal(target)
+    async #makeInternal(target)
     {
         let self = this;
 
@@ -603,7 +597,7 @@ export class Project extends EventEmitter
             needsBuild = this.mkopts.rebuild || outputTime === 0;
             for (let dep of finalMRule.deps)
             {
-                let inputHasRules = await this.buildTarget(dep);
+                let inputHasRules = await this.make(dep);
 
                 // Check input dependencies
                 if (!needsBuild)
@@ -620,7 +614,7 @@ export class Project extends EventEmitter
             needsBuild = true;
             for (let dep of finalMRule.deps)
             {
-                await this.buildTarget(dep);
+                await this.make(dep);
             }
         }
 

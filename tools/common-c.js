@@ -42,7 +42,7 @@ export default async function() {
         action: async () => {
             for (let sp of Object.values(this.subProjects))
             {
-                await sp.buildTarget("build");
+                await sp.make("build");
             }
         }
     })
@@ -73,7 +73,7 @@ export default async function() {
         action: async () => {
             for (let sp of Object.values(this.subProjects))
             {
-                await sp.buildTarget("clean");
+                await sp.make("clean");
             }
         }
     })

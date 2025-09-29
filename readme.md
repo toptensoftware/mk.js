@@ -717,7 +717,7 @@ this will be done in the action of a rule.
 ```js
 this.rule({
     name: "clean-sub-projects",
-    action: async () => await mySubProject.buildTarget("clean");
+    action: async () => await mySubProject.make("clean");
 })
 ```
 
@@ -731,7 +731,7 @@ this.rule({
     action: async () => {
         for (let sp of Object.values(this.subProjects))
         {
-            await sp.buildTarget("build");
+            await sp.make("build");
         }
     }
 })

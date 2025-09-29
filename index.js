@@ -109,8 +109,15 @@ try
     // Build targets
     if (targets.length == 0 && !mkopts.vars)
         targets = [ "build" ]
-    await proj.buildTargets(targets);
+    await proj.make(targets);
+
+    // Reminder about dry run...
+    if (proj.mkopts.dryrun)
+    {
+        proj.log(1, "## dry run, nothing updated");
+    }
 }
+
 catch (err)
 {
     if (err.info || err instanceof UserError)

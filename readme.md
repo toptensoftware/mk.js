@@ -8,9 +8,9 @@ mk.js is a build system similar to `make` but with the power of JavaScript.
 
 * Powerful variable system for flexible scripts
 * Explicit and inferred rules
-* File target and named target rules (without .PHONY directives)
+* File target and named target rules (aka .PHONY targets)
 * Built-in support for sub-projects
-* Built-in tool chains for `msvc` and `gcc` C, C++ and assembly builds
+* Built-in tool chains for `msvc` and `gcc` for C, C++ and assembly language builds
 * Cross platform
 
 ## Installation
@@ -106,8 +106,8 @@ To run the "clean" followed by the "build" rule:
 To make the most of mk.js there are a few key concepts to learn:
 
 * Projects - a set of variables, rules and sub-projects
-* Variables - settings that customizes the build process
-* Rules - how to build files and perform actions
+* Variables - settings that customize the build process
+* Rules - describe how to build files and perform actions
 * Libraries - re-usable variables and rules
 * SubProjects - composing large projects from smaller ones
 
@@ -118,7 +118,7 @@ The mk.js `Project` class declares a set of variables, rules and
 sub-projects that comprise a build system.
 
 When the root `mk.js` project script is loaded, the default exported
-function is called, and passed the `Project` object as `this`.
+function is called, and passed a `Project` instance as `this`.
 
 ```js
 export default async function()
@@ -127,12 +127,12 @@ export default async function()
 }
 ```
 
-You can programmatically load a project:
+You can also programmatically load a project:
 
 ```js
 import { Project } from "mk.js";
 
-let project = await Project.load("mk.js", { /* options */ })
+let project = await Project.load("mk.js", { /* mkopts, see below */ })
 ```
 
 Or, manually create one:
@@ -142,6 +142,8 @@ import { Project } from "mk.js";
 
 let project = new Project();
 ```
+
+### mkopts
 
 A project has a set of options (referred to as `mkopts`) that
 roughly map to command line arguments.  These can be passed to
@@ -166,15 +168,17 @@ mkopts = {
 
 Rather:
 
-* all file operations are resolved against the project's `projectDir`.
-* when executing external commands, the cwd of that process is set to `projectDir`
+* all file operations are resolved against the project's `projectDir` variable.
+* when executing external commands, the cwd of that process is set to `projectDir`.
 
 Care should be taken whenever a file path is used to actually access the file system
 to first resolve it against the project's directory. 
 
 To facilitate this, the project has a `resolve` method to produce a full path from a 
 relative path, and a `relative` method to produce a relative path (to the project) from 
-a full path. These methods should be used when passing paths between projects and 
+a full path. 
+
+These methods should also be used when passing paths between projects and 
 sub-projects by first calling resolve (on the source project) and then relative (on 
 the target project).
 
@@ -184,7 +188,7 @@ pass variables and settings between a project and its sub-projects.
 
 ## Variables
 
-### Variable Basics
+### Basics
 
 Variables are used to declare settings and customize a build.
 
@@ -201,8 +205,8 @@ left as they are once the rules of the project start being processed.  Again, th
 idea is to declare a set of rules and variables and then let mk.js determine what
 needs to be done based on those declarations.
 
-Variables are properties of the `Project` instance and should be set 
-using the `set` method:
+Variables are properties of the `Project` instance and are set 
+using the `set()` method:
 
 ```js
 // Set a single property
@@ -218,8 +222,8 @@ assert.equal(this.pears, "green")
 assert.equal(this.bananas, "yellow")
 ```
 
-Variables can also be set using the `default` method which works
-the same as `set`, except if a variable is already defined then it's ignored.
+Variables can also be set using the `default()` method which works
+the same as `set()`, except if a variable is already defined then it's left as is.
 
 ```js
 // Set a single property
@@ -249,11 +253,10 @@ this.set({ apples: "green" })
 assert.equal(this.message, "apples are green")
 ```
 
-Variables can be any JavaScript type.  
+Variables can be any JavaScript type. 
 
-Note however that callback lambdas in arrays and objects are not recursively called.
-
-To dynamically generate the content of the array do this:
+Note that callback lambdas in arrays and objects are not recursively called, so 
+to dynamically generate the content of the array do this:
 
 ```js
 // You probably do want this :)
@@ -265,7 +268,7 @@ this.set({
 assert.deepEqual(this.colors, [ "yellow", "red" ])
 ```
 
-Not this:
+not this:
 
 ```js
 // You probably don't want this :(
@@ -278,7 +281,7 @@ this.set({
 assert.deepEqual(this.colors, [ "yellow", "red" ])
 ```
 
-Or this:
+or this:
 
 ```js
 // You probably don't want this :(
@@ -322,17 +325,22 @@ A similar approach using array `.filter()` can be used to remove values.
 
 ## Rules
 
-Rules declare how a file is built, or other actions called named rules.
+There are two types of rules:
 
-Rules are declared using the Project's `rule()` function:
+* Named rules - describe actions to be invoked
+* File rules - declare how a file is built
+
+Rules are declared using the Project's `rule()` method.
 
 ### Named Rules
 
 Named rules have a `name` but no `output` property.
 
-Named rules don't time stamp checks on dependencies but do make
-dependencies (which can be file or named rules) and the 
-rule's own actions.
+Named rules don't perform time stamp checks on dependencies but do make
+dependencies (which can be file or named rules) and the rule's own actions.
+
+Named rules are similar to `.PHONY` targets in standard makefiles.
+
 
 ```js
 this.rule({
@@ -352,9 +360,11 @@ this.rule({
 
 ### File Rules
 
-A file rule has an `output` property that declares the file that the
-rule will produce.  File rules are only executed if the output file 
-doesn't exist, or if it's older than all the input file dependencies.
+File rules describe how to produce a file and only execute if the 
+target file doesn't exist, or is older than any of its dependencies.
+
+File rules have an `output` property that identifies the file the
+rule produces: 
 
 ```js
 this.rule({
@@ -373,12 +383,12 @@ this.rule({
 ```
 
 Note that file rules can have a `name` property but it's for informational
-purposes only and not used when searching for rules for a target.
+purposes only and not used when matching targets to rules.
 
 ### Inferred File Rules
 
 File rules can be inferred based on a pattern, using the `%` character
-to represent any sequence of characters in a file name:
+to represent any sequence of characters:
 
 ```js
 this.rule({
@@ -388,41 +398,59 @@ this.rule({
 });
 ```
 
-Inferred rules are only used if a non-inferred rule with an action
-is not defined.
+When trying to produce a file `test.obj` the following rule would be inferred from the
+above:
 
-If multiple inferred rules match a file, an error is generated.
+```js
+{
+  output: `test.obj`,
+  deps: `test.c`,
+  action: () => `gcc -o ${this.ruleOutput} -c ${this.ruleFirstDep}`,
+}
+```
+
+Inferred rules are only used if a non-inferred rule with an action
+can't be found.  If multiple inferred rules match a file they are merged 
+(see Rule Merging below).
+
 
 ### Conditional Rules
 
 A rule can be conditionally included by specifying a `condition` property.
 
-For example, this rule will only be used if the `projectType` is not
-a static library (assuming the `projectType` variable is set elsewhere).
+For example, picks one rule depending on the output file type
 
 ```js
+
+// Produce an executable
 this.rule({
   name: "link",
-  condition: () => this.projectType !== 'lib',
-  output: ...
-  action: ...
+  output: () => this.outputFile,
+  condition: () => !this.outputFile.endsWith(".lib"),
+  action: () => { /* commands to link executable */ },
 })
+
+// Produce a library
+this.rule({
+  name: "lib",
+  output: () => this.outputFile,
+  condition: () => this.outputFile.endsWith(".lib"),
+  action: () => { /* command to produce library */ },
+})
+
 ```
 
 ### Automatically Creating Output Directories
 
 A file rule can ask for the output directory to be created by setting it's `mkdir` property
-to true.
-
-In this example, the outputFile directory will be automatically created (if it doesn't exist)
-before the rule's actions are invoked.
+to `true`.
 
 ```js
 this.rule({
   name: "link",
   output: () => this.outputFile,
-  mkdir: true,
-  action: () => ...  
+  mkdir: true,    // Create the outputFile directory before invoking action
+  action: () => { /* produce file */ }
 })
 ```
 
@@ -431,18 +459,19 @@ this.rule({
 When a file rule is invoked, a message is output to the console describing the rule's name
 and the "subject" file.
 
-This is an informational only message, but describes the file the action is working on. If the subject 
-property is not set, the output file of the rule is used.
+This is an informational only message to describe the file the action is working on. If the subject 
+property is not set, the rule's output is used.
 
 The primary reason for this property is to provide a nicer output message for compilation steps.  
 
-For example, without the subject property, the message for a compile step might look like this:
+For example, without the subject property, the message for a compile step might would show
+the object file name:
 
 ```txt
     compile: ./build/obj/main.obj
 ```
 
-If however the compile rule is defined with a subject property:
+By setting a subject property:
 
 ```js
 this.rule({
@@ -453,7 +482,7 @@ this.rule({
 })
 ```
 
-the output will show the source file name instead of the object file:
+the output will show the source file name instead:
 
 ```txt
     compile: ./main.c
@@ -469,7 +498,7 @@ function to allow the rule one last chance to trigger the action.
 
 The main purpose for this is for C/C++ header file change detection checks.  Rather than
 generating rules for all the dependent .h files for a .c or .cpp file, this callback
-can be used to load a .d dependencies files from a previous compilation and manually check
+can be used to load a .d dependencies file from a previous compilation and manually check
 for additional change triggers.
 
 ```js
@@ -485,22 +514,23 @@ this.rule({
 
 ### Specifying Actions
 
-When a rule is triggered, its action property is passed to the project's `exec` method, something
+When a rule is triggered its action property is passed to the project's `exec` method, something
 like this:
 
 ```js
-  this.exec(rule.action)
+// (pseudo code)
+this.exec(rule.action)
 ```
 
 The `exec` functions accepts any of the following:
 
 * A callback (sync or async) function that performs some action.
 * A callback (sync or async) function that returns one of the following types.
-* A string - will be parsed (using double quotes for args with spaces) into and array of 
+* A string that will be parsed (using double quotes for args with spaces) into an array of 
   arguments and executed using the system shell
-* An array of strings - will be flattened and executed using the system shell.
+* An array of strings that will be flattened and executed using the system shell.
 * An object with a `cmdargs` property that can be a string or array (as described above) and an
-  optional `opts` that specifies additional properties to be passed to Node's `spawn` function.
+  optional `opts` property that specifies additional properties to be passed to Node's `spawn` function.
 
 To specify multiple action steps for rule, use a callback and use `Project.exec()` to execute 
 commands.
@@ -528,6 +558,19 @@ this.rule({
 
 Unlike the NodeJS functions that expect separate `cmd` and `args` parameters, `mk.js` expects these
 these in a single array where `cmd` is taken from `cmdargs[0]` and `args` from `cmdargs[1...]`.
+
+
+### Rule Merging
+
+If a target matches multiple rules, the rules are merged
+
+* `deps` are combined into a single array with the action rule's dependencies first
+* `action` an error is thrown if more than one rule has an action
+* `name` taken from the action rule
+* `mkdir` any rule with `mkdir` set to true causes the directory to be created
+* `subject` taken from the action rule
+* `needsBuild` called on all matching rules
+
 
 
 ### Summary of Rule Properties

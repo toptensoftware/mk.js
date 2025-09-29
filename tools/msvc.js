@@ -175,8 +175,8 @@ export default async function() {
             `/W${this.warningLevel}`,
             `/Zc:wchar_t`,
             `/FC`,
-            flatArray(this.define).map(x => `/d,${x}`),
-            flatArray(this.includePath).map(x => `/I,${x}`),
+            flatArray(this.define).map(x => `/d${x}`),
+            flatArray(this.includePath).map(x => `/I${x}`),
             this.config == "debug"
                 ? [ "/D_DEBUG", "/Od", `/${this.msvcrt}d` ] 
                 : [ "/DNDEBUG", "/O2", "/Oi", `/${this.msvcrt}` ],

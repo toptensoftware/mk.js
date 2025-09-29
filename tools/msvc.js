@@ -317,6 +317,9 @@ export default async function() {
     let _pchInfo;
     function pchInfo()
     {
+        // Disable PCH support - breaks /showIncludes
+        return null;
+
         // Only do this once
         if (_pchInfo === undefined)
         {
@@ -384,7 +387,8 @@ export default async function() {
                         if (!file.startsWith("C:\\Program Files"))
                         {
                             // Convert to posix style relative path from project
-                            let rel = self.relative(toPosix(file));
+                            let rel = toPosix(ospath.relative(toWindows(self.projectDir), file));
+                            //let rel = self.relative(toPosix(file));
 
                             // Convert to a relative path
                             deps += rel + "\n";

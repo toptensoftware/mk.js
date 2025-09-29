@@ -420,6 +420,10 @@ export class Project extends EventEmitter
                         output: target,
                         deps: flatArray(rule.deps).map(x => x.replace(/\%/g, () => m[1])),
                     });
+
+                    // Special case for the subject property to delay evaluation
+                    // until rule executed.
+                    this.createProperty(inferred, "subject", () => rule.subject);
                 }
 
                 // Add to list

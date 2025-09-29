@@ -445,7 +445,7 @@ export class Project extends EventEmitter
         if (Array.isArray(target))
         {
             // Build all targets
-            for (let t of targets)
+            for (let t of target)
             {
                 await this.make(t);
             }

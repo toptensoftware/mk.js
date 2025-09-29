@@ -111,6 +111,7 @@ To make the most of mk.js there are a few key concepts to learn:
 * Libraries - re-usable variables and rules
 * SubProjects - composing large projects from smaller ones
 
+
 ## Projects
 
 The mk.js `Project` class declares a set of variables, rules and
@@ -159,9 +160,46 @@ mkopts = {
 }
 ```
 
+### A Note about the Current Directory
+
+`mk.js` never changes its own process' current working directory.  
+
+Rather:
+
+* all file operations are resolved against the project's `projectDir`.
+* when executing external commands, the cwd of that process is set to `projectDir`
+
+Care should be taken whenever a file path is used to actually access the file system
+to first resolve it against the project's directory. 
+
+To facilitate this, the project has a `resolve` method to produce a full path from a 
+relative path, and a `relative` method to produce a relative path (to the project) from 
+a full path. These methods should be used when passing paths between projects and 
+sub-projects by first calling resolve (on the source project) and then relative (on 
+the target project).
+
+By not manipulating the `mk.js` process current working directory, multiple projects
+can all be loaded and processed within the one NodeJS process making it easy to 
+pass variables and settings between a project and its sub-projects.
+
 ## Variables
 
 ### Variable Basics
+
+Variables are used to declare settings and customize a build.
+
+In the following examples you might be wondering why variables are declared the
+way they are instead of just using local JavaScript variables?
+
+The idea here is to use a more declarative, less procedural approach to describing 
+a build - similar to how standard makefiles work.  For simple builds the difference 
+is negligible but for more complex builds, and especially for builds that use 
+toolchain libraries the described approach provides a lot more flexibility.
+
+In general, variables are intended to be setup as the project is loaded and then
+left as they are once the rules of the project start being processed.  Again, the 
+idea is to declare a set of rules and variables and then let mk.js determine what
+needs to be done based on those declarations.
 
 Variables are properties of the `Project` instance and should be set 
 using the `set` method:
@@ -171,7 +209,7 @@ using the `set` method:
 this.set("apples", "red");
 assert.equal(this.apples, "red")
 
-// Set multiple properties:
+// Set multiple properties by passing an object
 this.set({
   pears: "green",
   bananas: "yellow",
@@ -181,7 +219,7 @@ assert.equal(this.bananas, "yellow")
 ```
 
 Variables can also be set using the `default` method which works
-the same as set, except if a variable is already defined, it's ignored
+the same as `set`, except if a variable is already defined then it's ignored.
 
 ```js
 // Set a single property
@@ -211,8 +249,9 @@ this.set({ apples: "green" })
 assert.equal(this.message, "apples are green")
 ```
 
-Variables can be any JavaScript type, but note that callback lambdas
-in arrays and objects are not recursively called.
+Variables can be any JavaScript type.  
+
+Note however that callback lambdas in arrays and objects are not recursively called.
 
 To dynamically generate the content of the array do this:
 
@@ -226,7 +265,7 @@ this.set({
 assert.deepEqual(this.colors, [ "yellow", "red" ])
 ```
 
-This will result in an array with a callback
+Not this:
 
 ```js
 // You probably don't want this :(
@@ -239,8 +278,7 @@ this.set({
 assert.deepEqual(this.colors, [ "yellow", "red" ])
 ```
 
-This will result in an array with a value, but the value 
-won't update if the `apples` variable is changed:
+Or this:
 
 ```js
 // You probably don't want this :(
@@ -252,7 +290,7 @@ this.set({
 // This will pass
 assert.deepEqual(this.colors, [ "yellow", "red" ])
 
-// This will fail
+// But this will fail if "apples" is changed
 this.set({ apples: "greed" });
 assert.deepEqual(this.colors, [ "yellow", "green" ])
 
@@ -280,6 +318,8 @@ this.set({
 assert.deepEqual(this.fruits, [ "apples", "pears", "bananas" ]);
 ```
 
+A similar approach using array `.filter()` can be used to remove values.
+
 ## Rules
 
 Rules declare how a file is built, or other actions called named rules.
@@ -288,10 +328,10 @@ Rules are declared using the Project's `rule()` function:
 
 ### Named Rules
 
-Named rules have a `name` but no `output` property:
+Named rules have a `name` but no `output` property.
 
-Named rules don't have dependency time stamp checks but do invoke
-any defined dependencies (which can be file or named rules) and the 
+Named rules don't time stamp checks on dependencies but do make
+dependencies (which can be file or named rules) and the 
 rule's own actions.
 
 ```js
@@ -332,6 +372,9 @@ this.rule({
 });
 ```
 
+Note that file rules can have a `name` property but it's for informational
+purposes only and not used when searching for rules for a target.
+
 ### Inferred File Rules
 
 File rules can be inferred based on a pattern, using the `%` character
@@ -350,19 +393,157 @@ is not defined.
 
 If multiple inferred rules match a file, an error is generated.
 
-### Rule Properties
+### Conditional Rules
 
-Rules can have the following properties:
+A rule can be conditionally included by specifying a `condition` property.
+
+For example, this rule will only be used if the `projectType` is not
+a static library (assuming the `projectType` variable is set elsewhere).
+
+```js
+this.rule({
+  name: "link",
+  condition: () => this.projectType !== 'lib',
+  output: ...
+  action: ...
+})
+```
+
+### Automatically Creating Output Directories
+
+A file rule can ask for the output directory to be created by setting it's `mkdir` property
+to true.
+
+In this example, the outputFile directory will be automatically created (if it doesn't exist)
+before the rule's actions are invoked.
+
+```js
+this.rule({
+  name: "link",
+  output: () => this.outputFile,
+  mkdir: true,
+  action: () => ...  
+})
+```
+
+### Subject Files
+
+When a file rule is invoked, a message is output to the console describing the rule's name
+and the "subject" file.
+
+This is an informational only message, but describes the file the action is working on. If the subject 
+property is not set, the output file of the rule is used.
+
+The primary reason for this property is to provide a nicer output message for compilation steps.  
+
+For example, without the subject property, the message for a compile step might look like this:
+
+```txt
+    compile: ./build/obj/main.obj
+```
+
+If however the compile rule is defined with a subject property:
+
+```js
+this.rule({
+  name: "compile",
+  output: () => this.ruleTarget,
+  subject: () => this.ruleFirstDep,
+  action: () => { /* etc... */ }
+})
+```
+
+the output will show the source file name instead of the object file:
+
+```txt
+    compile: ./main.c
+```
+
+### Additional Build Checks
+
+A rule can define an optional property `needsBuild` that can perform a final check
+for additional triggers to cause a rule to be invoked.
+
+If mk.js thinks a file is up to date, before skipping it, it will call the `needsBuild`
+function to allow the rule one last chance to trigger the action.
+
+The main purpose for this is for C/C++ header file change detection checks.  Rather than
+generating rules for all the dependent .h files for a .c or .cpp file, this callback
+can be used to load a .d dependencies files from a previous compilation and manually check
+for additional change triggers.
+
+```js
+this.rule({
+  name: "compile",
+
+  // read .d file and check if any headers newer than this.ruleOutput
+  needsBuild: () => checkForModifiedHeaders(),  
+
+  /// etc...
+})
+```
+
+### Specifying Actions
+
+When a rule is triggered, its action property is passed to the project's `exec` method, something
+like this:
+
+```js
+  this.exec(rule.action)
+```
+
+The `exec` functions accepts any of the following:
+
+* A callback (sync or async) function that performs some action.
+* A callback (sync or async) function that returns one of the following types.
+* A string - will be parsed (using double quotes for args with spaces) into and array of 
+  arguments and executed using the system shell
+* An array of strings - will be flattened and executed using the system shell.
+* An object with a `cmdargs` property that can be a string or array (as described above) and an
+  optional `opts` that specifies additional properties to be passed to Node's `spawn` function.
+
+To specify multiple action steps for rule, use a callback and use `Project.exec()` to execute 
+commands.
+
+```js
+this.rule({
+
+  action: async () => {
+
+    // Show info
+    this.log(1, "Doing stuff...");
+
+    // First command
+    await this.exec(`ls -al "${this.buildDir}"`);
+
+    // Second command
+    await this.exec({
+      cmdargs: [ "rm", "-rf", this.buildDir ],
+      opts: { env: { /* whatever */ }},
+    })
+  }
+
+});
+```
+
+Unlike the NodeJS functions that expect separate `cmd` and `args` parameters, `mk.js` expects these
+these in a single array where `cmd` is taken from `cmdargs[0]` and `args` from `cmdargs[1...]`.
+
+
+### Summary of Rule Properties
+
+Rules support the following properties:
 
 * `name` - the name of the rule (supported on file and named rules)
 * `output` - marks the rule as a file rule and specifies the file it generates
-* `deps` - an array of file or named rules to make before this one.  For file rules, if all the dependencies are older than the output file, the rule's action is skipped.
+* `deps` - an array of file or named rules to make before this one.  For file rules, if all the 
+  dependencies are older than the output file, the rule's action is skipped.
 * `action` - the action to invoke for this rule
 * `subject` - the name of the file to display when running a file action
-* `condition` - a callback to determine if the rule is applicable.  If defined and evaluated to `false` the rule is ignored.
+* `condition` - a callback to determine if the rule is applicable.  If defined and evaluates to 
+  `false` the rule is ignored.
 * `mkdir` - for file rules, if true creates the output file's directory if doesn't already exist.
-* `needsBuild` - called for files that wouldn't normally need to be built as
-an extra check to trigger the build.  Can be used to check for modified C/C++ header files as an extra trigger for invoking the action.
+* `needsBuild` - called for files that wouldn't normally need to be built as an extra check to trigger the build.  
 
 
 ## Built-in Variables

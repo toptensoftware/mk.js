@@ -107,7 +107,7 @@ try
     let proj = await Project.load(mkfile, mkopts);
 
     // Build targets
-    if (targets.length == 0)
+    if (targets.length == 0 && !mkopts.vars)
         targets = [ "build" ]
     await proj.buildTargets(targets);
 }

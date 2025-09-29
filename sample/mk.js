@@ -9,7 +9,7 @@ export default async function()
         message: () => `${this.greeting} ${this.subject}`,
     });
 
-    // File rule create a file if it doesn't exist
+    // File rule creates a file if it doesn't exist
     this.rule({
         output: () => this.outputFile,
         action: () => `echo ${this.message} > ${this.outputFile}`,
@@ -18,7 +18,7 @@ export default async function()
     // Named rule "build"
     this.rule({
         name: "build",
-        deps: () => [ this.outputFile ],
+        deps: () => this.outputFile,
     });
 
     // Named rule "clean"

@@ -23,6 +23,7 @@ export class Project extends EventEmitter
     // Default mkopts
     mkopts = {
         dir: null,
+        globals: {},
         set: {},
         rebuild: false,
         libPath: [],
@@ -96,58 +97,6 @@ export class Project extends EventEmitter
 
     // Rules for this project
     rules = [];
-
-/*
-    // Evaluate a value by invoking callbacks, and expanding strings
-    // val - the value to evaluate
-    // [callbackThis] - the value of "this" for callbacks (this if unspecified)
-    eval(val, callbackThis)
-    {
-        // Recursively evaluate arrays
-        if (Array.isArray(val))
-            return val.map(x => this.eval(x, callbackThis));
-
-        switch (typeof(val))
-        {
-            case "function":
-                if (callbackThis === undefined)
-                    return this.eval(val.call(this));
-                else
-                    return this.eval(val.call(callbackThis, this), callbackThis);
-
-            case "string":
-                return val.replace(/\$\(([^)]+)\)/g, (m, varname) => {
-                    let v = this[varname];
-                    if (v === undefined || v === null)
-                        return "";
-                    if (Array.isArray(v))
-                        return quotedJoin(v);
-                    else
-                        return v;
-                });
-        }
-
-        return val;
-    }
-*/
-
-    // Deref a value by invoking callbacks
-    // val - the value to deref
-    // [callbackThis] - the value of "this" for callbacks (this if unspecified)
-    /*
-    deref(val, callbackThis)
-    {
-        if (typeof(val) === "function")
-        {
-            if (callbackThis === undefined)
-                return val.call(this);
-            else
-                return val.call(callbackThis, this);
-        }
-
-        return val;
-    }
-    */
 
     // Create a property on 'object', named 'key' with
     // value 'val', where val can be a callback

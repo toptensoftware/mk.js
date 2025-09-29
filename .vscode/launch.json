@@ -12,7 +12,7 @@
                 "<node_internals>/**"
             ],
             "program": "${workspaceFolder}/index.js",
-            "args": [  ],
+            "args": [ "--rebuild" ],
             "cwd": "${workspaceFolder}/../zmach/src/zmach",
             "outputCapture": "std",
         }

@@ -249,7 +249,7 @@ export default async function() {
     // Create library (.lib)
     this.rule({
         output: () => this.outputFile,
-        deps: () => this.objFiles,
+        deps: () => pchSort(this.objFiles),
         name: "lib",
         mkdir: true,
         condition: () => !!this.projectKind.match(/lib|a/),

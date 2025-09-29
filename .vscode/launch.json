@@ -12,8 +12,8 @@
                 "<node_internals>/**"
             ],
             "program": "${workspaceFolder}/index.js",
-            "args": [ "clean", "build" ],
-            "cwd": "${workspaceFolder}/sample",
+            "args": [  ],
+            "cwd": "${workspaceFolder}/../zmach/src/zmach",
             "outputCapture": "std",
         }
     ]

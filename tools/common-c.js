@@ -13,7 +13,10 @@ export default async function() {
         objDir: () => `${this.buildDir}/obj`,
         outputDir: () => `${this.buildDir}/${this.projectKind == 'lib' ? "lib" : "bin"}`,
         outputFile: () => `${this.outputDir}/${this.outputName}`,
-        sourceFiles: cache(() => this.glob(`${this.sourceDir}/*.{c,cpp,${this.asm_extensions}}`)),
+        sourceFiles: cache(() => this.glob(
+            `*.{c,cpp,${this.asm_extensions}}`,
+            { cwd: this.sourceDir }
+        )),
         warningLevel: 3,
         define: [],
         includePath: [],

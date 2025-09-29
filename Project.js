@@ -316,11 +316,13 @@ export class Project extends EventEmitter
     glob(pattern, options)
     {
         let opts = Object.assign({
-            cwd: this.projectDir,
             posix: true,
         }, options);
 
-        return globSync(pattern, opts);
+        opts.cwd = path.resolve(this.projectDir, options?.cwd ?? ".");
+
+        let result = globSync(pattern, opts);
+        return result;
     }
 
     // Current rule vars

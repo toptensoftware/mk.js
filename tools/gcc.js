@@ -170,7 +170,7 @@ export default async function() {
             flatArray(this.includePath).map(x => `-I ${x}`),
             `-MD`, `-MF`, changeExtension(this.ruleTarget, "d"), `-MT`, this.ruleTarget, `-MP`, 
             `-o`, this.ruleTarget,
-            this.ruleFirstDep,
+            `-c`, this.ruleFirstDep,
         ]),
     });
 

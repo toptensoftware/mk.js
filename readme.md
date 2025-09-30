@@ -23,7 +23,7 @@ npm install -g toptensoftware/mk.js
 
 ## Quick Guide
 
-In a project directory, create a file `mk.js`.  This file declares
+In a project directory, create a file `mk.mjs`.  This file declares
 your make file variables, rules and other script.
 
 ```js
@@ -117,7 +117,7 @@ To make the most of mk.js there are a few key concepts to learn:
 The mk.js `Project` class declares a set of variables, rules and
 sub-projects that comprise a build system.
 
-When the root `mk.js` project script is loaded, its default exported
+When the root `mk.mjs` project script is loaded, its default exported
 function is called and passed a `Project` instance as `this`.
 
 ```js
@@ -151,7 +151,7 @@ roughly map to command line arguments.  These can be passed to
 
 ```js
 mkopts = {
-    dir: null,      // project directory (defaults to mk.js directory)
+    dir: null,      // project directory (defaults to mk.mjs directory)
     set: {},        // a set of variables for this project
     globals: {},    // a set of variables for this project and its sub-projects
     rebuild: false, // forces targets to build regardless of timestamps
@@ -658,7 +658,7 @@ export default async function()
 }
 ```
 
-This will look for a file `someLibrary.js` in the following locations:
+This will look for a file `someLibrary.mjs` in the following locations:
 
 1. the libPath as specified in mkopts (or via the command line)
 2. the users home directory: `~/.mk.js/`
@@ -666,7 +666,7 @@ This will look for a file `someLibrary.js` in the following locations:
 
 (Note this is an async operation and should be awaited)
 
-To import a local library, use a relative path and include the `.js` file 
+To import a local library, use a relative path and include the `.mjs` file 
 extension.  These paths will be resolved against the current project directory
 or the base directory of the current library being imported. (ie: nested
 `use()` calls resolve against the current directory of the file being 
@@ -676,12 +676,12 @@ imported).
 export default async function()
 {
     // Load library
-    await this.use("./tools/mylib.js");
+    await this.use("./tools/mylib.mjs");
 }
 ```
 
 
-Implementing a library is the same as a regular `mk.js` file and should
+Implementing a library is the same as a regular `mk.mjs` file and should
 export a default function that is passed the project object:
 
 ```js
@@ -707,7 +707,7 @@ script.  To load a sub-project, use the `loadSubProject()` method:
 let mySubProject = await this.loadSubProject("my-sub-project")
 ```
 
-`loadSubProject` looks for a `mk.js` file in the specified directory (relative
+`loadSubProject` looks for a `mk.mjs` file in the specified directory (relative
 to the parent project directory, loads it into a new `Project` object and
 returns the loaded project.
 
@@ -754,7 +754,7 @@ await this.loadSubProject("sub-project", {
 
 The `Project` object include several build in variables:
 
-* `projectFile` - the full path of the loaded `mk.js` file
+* `projectFile` - the full path of the loaded `mk.mjs` file
 * `projectName` - defaults to the name of the directory the project was loaded from
 * `projectDir` - the full path of the directory the project was loaded from
 * `subProjects` - a map of project name to project object of all loaded sub-projects

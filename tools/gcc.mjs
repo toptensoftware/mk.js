@@ -10,7 +10,7 @@ export default async function() {
     let self = this;
 
     // Load standard c vars and rules
-    await this.use("./common-c.js");
+    await this.use("./common-c.mjs");
 
     // Default variables
     this.default({

@@ -142,7 +142,7 @@ function showHelp()
     console.log("usage: mk [options...] [targets...]\n");
     showArgs({
         "targets": "One or more target rules to run (defaults to \"build\")",
-        "--file:<file>": "Path to mk.js script file to run",
+        "--file:<file>": "Path to mk.mjs script file to run",
         "--dir:<dir>": "Root directory to run the script under",
         "--lib:<dir>": "Adds a directory to search for library files loaded by use()",
         "--rebuild": "Rebuilds everything, ignoring dependency checkes",

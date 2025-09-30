@@ -58,7 +58,7 @@ export class Project extends EventEmitter
         let absmkfile = path.resolve(mkfile);
         if (isDirectory(absmkfile))
         {
-            absmkfile = path.join(absmkfile, "mk.js");
+            absmkfile = path.join(absmkfile, "mk.mjs");
         }
 
         // Setup project variables
@@ -277,10 +277,10 @@ export class Project extends EventEmitter
                 path.join(homedir(), ".mk.js"),
             ];
 
-            // Check ends with ".js"
+            // Check extension
             let originalItem = item;
-            if (!item.endsWith(".js"))
-                item += ".js";
+            if (!item.match(/(\.js|\.mjs|\.cjs)$/))
+                item += ".mjs";
 
             // Search on lib path
             for (let libDir of libPath)

@@ -401,8 +401,8 @@ export default async function() {
                     if (!filenameFiltered)
                     {
                         if (!sourceFileResolved)
-                            sourceFileResolved = ospath.resolve(self.ruleFirstDep);
-                        if (sourceFileResolved == ospath.resolve(line))
+                            sourceFileResolved = ospath.basename(self.ruleFirstDep);
+                        if (sourceFileResolved == line)
                         {
                             filenameFiltered = true;
                             return;

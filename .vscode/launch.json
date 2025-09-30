@@ -13,7 +13,7 @@
             ],
             "program": "${workspaceFolder}/index.js",
             "args": [ "--rebuild", "--verbose" ],
-            "cwd": "${workspaceFolder}/../zmach/src/zmach",
+            "cwd": "${workspaceFolder}/../zmach/src/z80",
             "outputCapture": "std",
         }
     ]

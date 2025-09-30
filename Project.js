@@ -137,7 +137,7 @@ export class Project extends EventEmitter
             let val = this[key];
             if (val === undefined)
                 continue;
-            process.stdout.write(`${key}: ${JSON.stringify(this[key])}\n`);
+            process.stdout.write(`${key}: ${JSON.stringify(this[key], null, 4)}\n`);
         }
         process.stdout.write(`---\n`);
     }

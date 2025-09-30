@@ -253,18 +253,26 @@ export default async function() {
         name: "lib",
         mkdir: true,
         condition: () => !!this.projectKind.match(/lib|a/),
-        action: () => this.exec({
-            cmdargs: [
-                `lib.exe`,
-                `/nologo`,
-                this.ruleDeps,
-                this.msvc_lib_args,
-                `/out:${this.ruleTarget}`,
-            ],
-            opts: {
-                env: captureMsvcEnvironment(this.platform),
-            }
-        })
+        action: async () => {
+
+            // Delete old library (if exists)
+            await this.exec(['rm', '-f', this.ruleTarget]);
+
+            // Create library
+            await this.exec({
+                cmdargs: [
+                    `lib.exe`,
+                    `/nologo`,
+                    this.ruleDeps,
+                    this.msvc_lib_args,
+                    `/out:${this.ruleTarget}`,
+                ],
+                opts: {
+                    env: captureMsvcEnvironment(this.platform),
+                }
+            });
+            
+        },
     });
 
 

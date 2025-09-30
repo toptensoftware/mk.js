@@ -16,6 +16,7 @@ let mkopts = {
     libPath: [],
 };
 let targets = [];
+let errorStack = false;
 let args = clargs();
 while (args.next())
 {
@@ -74,6 +75,10 @@ while (args.next())
             mkopts.dryrun = true;
             break;
 
+        case "error-stack":
+            errorStack = true;
+            break;
+
         case null:
             let parts = args.readValue().split("=");
             if (parts.length ==  2)
@@ -122,7 +127,10 @@ catch (err)
 {
     if (err.info || err instanceof UserError)
     {
-        process.stderr.write("\n" + err.stack + "\n\n");
+        if (errorStack)
+            process.stderr.write("\n" + err.stack + "\n\n");
+        else
+            process.stderr.write("\n" + err.message + "\n\n");
         process.exit(7);
     }
     else
@@ -152,6 +160,7 @@ function showHelp()
         "--verbose": "Same as --verbosity:2",
         "--debug": "Same as --verbosity:9",
         "--verbosity:<level>": "Verbosity level",
+        "--error-stack": "Show stack when reporting user errors",
         "-h,--help": "Show this help",
         "-v,--version": "Show version information",
     });

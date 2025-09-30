@@ -9,6 +9,7 @@ export class UserError extends Error
         super(message);
     }
 }
+
 export function flatArray(x)
 {
     if (Array.isArray(x))

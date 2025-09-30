@@ -2,9 +2,13 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { posix as path, default as ospath } from "node:path";
 import { mkdirSync } from 'node:fs';
 import { EventEmitter } from 'node:events';
+import { register } from 'node:module';
 import { homedir } from 'node:os';
 import { globSync } from 'glob';
 import { toPosix, UserError, run, fileTime, quotedJoin, escapeRegExp, flatArray, quotedSplit, isDirectory } from "./utils.js";
+
+// Register module loader hook for "mk"
+register("./loaderHooks.js", import.meta.url);
 
 const __dirname = ospath.dirname(fileURLToPath(import.meta.url));
 

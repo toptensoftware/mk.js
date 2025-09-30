@@ -1,0 +1,18 @@
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { posix as path, default as ospath } from "node:path";
+
+const __dirname = ospath.dirname(fileURLToPath(import.meta.url));
+
+
+export async function resolve(specifier, context, nextResolve) {
+
+    if (specifier == 'mk')
+    {
+        return {
+            shortCircuit: true,
+            url: pathToFileURL(ospath.join(__dirname, "mk.js")).href
+        }
+    }
+
+    return nextResolve(specifier, context);
+}

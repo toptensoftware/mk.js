@@ -18,6 +18,7 @@ export class Project extends EventEmitter
         this.projectDir = path.resolve(".");
         this.projectName = path.basename(this.projectDir);
         this.useBaseDir = this.projectDir;
+        this.vars = new Set([ "projectDir", "projectName" ]);
     }
 
     // Default mkopts
@@ -75,7 +76,7 @@ export class Project extends EventEmitter
         await module.default.call(this);
 
         // Dump variables
-        if (this.mkopts.vars)
+        if (this.mkopts.dumpvars)
             this.dumpVars();
     }
 
@@ -132,14 +133,14 @@ export class Project extends EventEmitter
     dumpVars()
     {
         process.stdout.write(`--- ${this.projectName} variables ---\n`);
-        for (let key of this.vars)
+        for (let key of [...this.vars].sort())
         {   
             let val = this[key];
             if (val === undefined)
                 continue;
             process.stdout.write(`${key}: ${JSON.stringify(this[key], null, 4)}\n`);
         }
-        process.stdout.write(`---\n`);
+        process.stdout.write('\n');
     }
 
     // Set properties on this project

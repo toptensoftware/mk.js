@@ -12,8 +12,8 @@
                 "<node_internals>/**"
             ],
             "program": "${workspaceFolder}/index.js",
-            "args": [ "--rebuild", "--verbose" ],
-            "cwd": "${workspaceFolder}/../zmach/src/z80",
+            "args": [ "--vars" ],
+            "cwd": "${workspaceFolder}/testproj",
             "outputCapture": "std",
         }
     ]

@@ -66,11 +66,11 @@ while (args.next())
             mkopts.rebuild = true;
             break;
 
-        case "vars":
-            mkopts.vars = true;
+        case "dump-vars":
+            mkopts.dumpvars = true;
             break;
 
-        case "dryrun":
+        case "dry-run":
             mkopts.dryrun = true;
             break;
 
@@ -107,7 +107,7 @@ try
     let proj = await Project.load(mkfile, mkopts);
 
     // Build targets
-    if (targets.length == 0 && !mkopts.vars)
+    if (targets.length == 0 && !mkopts.dumpvars)
         targets = [ "build" ]
     await proj.make(targets);
 
@@ -146,7 +146,8 @@ function showHelp()
         "--dir:<dir>": "Root directory to run the script under",
         "--lib:<dir>": "Adds a directory to search for library files loaded by use()",
         "--rebuild": "Rebuilds everything, ignoring dependency checkes",
-        "--dryrun": "Runs the script but doesn't actually run any external commands",
+        "--dump-vars": "Show all variables after load project",
+        "--dry-run": "Runs the script but doesn't actually run any external commands",
         "--quiet": "Same as --verbosity:0",
         "--verbose": "Same as --verbosity:2",
         "--debug": "Same as --verbosity:9",

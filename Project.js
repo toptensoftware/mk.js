@@ -176,7 +176,11 @@ export class Project extends EventEmitter
             if (typeof(val) === 'function' && val.length > 0)
             {
                 var prop = Object.getOwnPropertyDescriptor(this, key);
-                if (prop.value)
+                if (!prop)
+                {
+                    this.createProperty(this, key, () => val.call(this, undefined));
+                }
+                else if (prop.value)
                 {
                     this.createProperty(this, key, () => val.call(this, prop.value));
                 }

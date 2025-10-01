@@ -166,8 +166,14 @@ export class Project extends EventEmitter
     {
         if (arguments.length == 2)
         {
+            
             // set(key, val)
             let [key, val] = arguments;
+
+
+            if (key == "gcc_link_defaults")
+                debugger;
+
             if (val === undefined)
                 this.vars.delete(key);
             else
@@ -192,6 +198,7 @@ export class Project extends EventEmitter
             }
             else
             {
+                delete this[key];
                 this.createProperty(this, key, val);
             }
         }

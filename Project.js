@@ -6,6 +6,7 @@ import { register } from 'node:module';
 import { homedir } from 'node:os';
 import { globSync } from 'glob';
 import { toPosix, UserError, run, fileTime, quotedJoin, escapeRegExp, flatArray, quotedSplit, isDirectory } from "./utils.js";
+import { spawnSync } from 'node:child_process';
 
 // Register module loader hook for "mk"
 register("./loaderHooks.js", import.meta.url);
@@ -804,6 +805,55 @@ export class Project extends EventEmitter
 
         // Run command
         return await run(cmdargs, opts);
+    }
+
+    // Execute a command synchronously and return stdout
+    shell(cmd, opts)
+    {
+        // Resolve opts
+        opts = Object.assign({
+            cwd: this.projectDir,
+            shell: true,
+            encoding: "utf-8",
+        }, opts);
+
+        // Handle different cmd types
+        let cmdargs;
+        if (typeof(cmd) === 'string')
+        {
+            // eg: "ls -al"
+            cmdargs = quotedSplit(cmd);
+        }
+        else if (Array.isArray(cmd))
+        {
+            // eg: ["ls", "-al"]
+            cmdargs = flatArray(cmd);
+        }
+        else if (cmd.cmdargs)
+        {
+            if (typeof(cmd.cmdargs) === 'string')
+                // eg: { cmdargs: "ls -al", opts: { cwd: "/" } }
+                cmdargs = quotedSplit(this.cmd.cmdargs);
+            else    
+                // eg: { cmdargs: [ "ls", "-al" ], opts: { cwd: "/" } ]
+                cmdargs = flatArray(cmd.cmdargs);
+
+            Object.assign(opts, cmd.opts);
+        }
+        else
+        {
+            throw new UserError(`Don't know how to exec '${cmd}'`)
+        }
+
+        // Object with cmdargs
+        if (cmdargs.length < 0)
+            return "";
+
+        this.log(2, `${opts.cwd}$ ${quotedJoin(cmdargs)}`);
+
+        // Run it
+        let r = spawnSync(cmdargs[0], cmdargs.splice(1), opts);
+        return r.stdout.trimEnd();
     }
 
     // Log a message

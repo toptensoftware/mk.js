@@ -10,5 +10,6 @@ export default async function ()
     // Set variables
     this.set({
         projectKind: "exe",
+        execTest: () => this.shell("echo Hello World"),
     });
 };

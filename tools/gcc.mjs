@@ -17,9 +17,16 @@ export default async function() {
         platform: process.platform,
         gcc_prefix: "",
         gcc_args: [ 
-            '-g',
             '-fPIC'
         ],
+        gcc_c_standard: "c2x",
+        gcc_cpp_standard: "c++17",
+        gcc_as_args: [],
+        gcc_c_args: [],
+        gcc_cpp_args: [],
+        gcc_link_args: [],
+        gcc_ar_args: [],
+
         gcc_warn_args: () => {
             // Approximately match msvc warning level to gcc warning groups
             let r = [];
@@ -34,12 +41,57 @@ export default async function() {
             r.push("-Wno-unused-parameter")
             return r;
         },
-        gcc_c_standard: "c2x",
-        gcc_as_args: [],
-        gcc_c_args: [],
-        gcc_cpp_args: [],
-        gcc_link_args: [],
-        gcc_ar_args: [],
+        gcc_preproc_args: () => {
+            return [
+                ...flatArray(this.define).map(x => `-D${x}`),
+                ...flatArray(this.includePath).map(x => `-I ${x}`),
+            ]
+        },
+        gcc_config_args: () => {
+            return this.config == "debug"
+                ? [ "-g", "-D_DEBUG", "-O0" ] 
+                : [ "-DNDEBUG", "-O2" ];
+        },
+        gcc_as_defaults: () => {
+            return [
+                ...this.gcc_preproc_args,
+                ...this.gcc_config_args,
+            ]
+        },
+        gcc_depgen_args: () => {
+            return [
+                `-MD`, 
+                `-MF`, changeExtension(this.ruleTarget, "d"), 
+                `-MT`, this.ruleTarget, 
+                `-MP`, 
+            ];
+        },
+        gcc_c_defaults: () => {
+            return [
+                ...this.gcc_preproc_args,
+                ...this.gcc_config_args,
+                ...this.gcc_warn_args,
+                ...this.gcc_depgen_args
+                `--std=${this.gcc_c_standard}`,
+            ]
+        },
+        gcc_cpp_defaults: () => {
+            return [
+                ...this.gcc_preproc_args,
+                ...this.gcc_config_args,
+                ...this.gcc_warn_args,
+                ...this.gcc_depgen_args
+                `--std=${this.gcc_cpp_standard}`,
+            ]
+        },
+        gcc_link_defaults: () => {
+            return [
+                this.projectKind == "exe" ? `-Wl,-rpath,'$ORIGIN'` : undefined,
+                this.projectKind.match(/dll|so/) ? 
+                    [ `-shared`, `-Wl,-soname,${path.basename(this.ruleTarget)}` ] : undefined
+            ].filter(x => x !== undefined);
+        },
+        gcc_link_command: "g++",    
         asm_extensions: "s,S",
         objFiles: () => this.sourceFiles.map(x => `${this.objDir}/${changeExtension(x, "o")}`),
         linkLibrary: () => {
@@ -94,14 +146,8 @@ export default async function() {
             // Assemble file
             await this.exec([
                 `${this.gcc_prefix}gcc`,
-                this.config == "debug"
-                    ? [ "-D_DEBUG" ] 
-                    : [ "-DNDEBUG" ],
-                this.gcc_args,
-                this.gcc_warn_args,
+                this.gcc_as_defaults,
                 this.gcc_as_args,
-                flatArray(this.define).map(x => `-D${x}`),
-                flatArray(this.includePath).map(x => `-I ${x}`),
                 `-o`, this.ruleTarget,
                 `-c`, this.ruleFirstDep,
             ]);
@@ -111,11 +157,8 @@ export default async function() {
                 `${this.gcc_prefix}cpp`,
                 `-M`,
                 `-MT`, this.ruleTarget,
-                this.config == "debug"
-                    ? [ "-D_DEBUG" ] 
-                    : [ "-DNDEBUG" ],
-                flatArray(this.define).map(x => `-D${x}`),
-                flatArray(this.includePath).map(x => `-I ${x}`),
+                this.gcc_config_args,
+                this.gcc_preproc_args,
                 this.ruleFirstDep,
                 ">", changeExtension(this.ruleTarget, "d")
             ]);
@@ -135,16 +178,8 @@ export default async function() {
         needsBuild: checkHeaderDeps,
         action: () => this.exec([
             `${this.gcc_prefix}gcc`,
-            this.config == "debug"
-                ? [ "-D_DEBUG", "-O0" ] 
-                : [ "-DNDEBUG", "-O2" ],
-            this.gcc_args,
-            this.gcc_warn_args,
+            this.gcc_c_defaults,
             this.gcc_c_args,
-            flatArray(this.define).map(x => `-D${x}`),
-            flatArray(this.includePath).map(x => `-I ${x}`),
-            `--std=${this.gcc_c_standard}`,
-            `-MD`, `-MF`, changeExtension(this.ruleTarget, "d"), `-MT`, this.ruleTarget, `-MP`, 
             `-o`, this.ruleTarget,
             `-c`, this.ruleFirstDep,
         ]),
@@ -160,15 +195,8 @@ export default async function() {
         needsBuild: checkHeaderDeps,
         action: () => this.exec([
             `${this.gcc_prefix}g++`,
-            this.config == "debug"
-                ? [ "-D_DEBUG", "-O0" ] 
-                : [ "-DNDEBUG", "-O2" ],
-            this.gcc_args,
-            this.gcc_warn_args,
+            this.gcc_cpp_defaults,
             this.gcc_cpp_args,
-            flatArray(this.define).map(x => `-D${x}`),
-            flatArray(this.includePath).map(x => `-I ${x}`),
-            `-MD`, `-MF`, changeExtension(this.ruleTarget, "d"), `-MT`, this.ruleTarget, `-MP`, 
             `-o`, this.ruleTarget,
             `-c`, this.ruleFirstDep,
         ]),
@@ -182,12 +210,9 @@ export default async function() {
         mkdir: true,
         condition: () => !this.projectKind.match(/lib|a/),
         action: () => this.exec([
-            `${this.gcc_prefix}g++`,
+            `${this.gcc_prefix}${this.gcc_link_command}`,
+            this.gcc_link_defaults,
             this.gcc_link_args,
-            this.projectKind == "exe" ? `-Wl,-rpath,'$ORIGIN'` : undefined,
-            this.projectKind.match(/dll|so/) ? 
-                [ `-shared`, `-Wl,-soname,${path.basename(this.ruleTarget)}` ] :
-                [],
             `-o`, this.ruleTarget,
             this.ruleDeps,
             this.libs,

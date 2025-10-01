@@ -216,8 +216,10 @@ export default async function() {
             this.gcc_link_args,
             `-o`, this.ruleTarget,
             this.ruleDeps,
+            `--start-group`,
             this.gcc_libs,
             this.subProjectLibs,
+            `--end-group`
         ]),
     });
 

@@ -22,6 +22,7 @@ export default async function() {
         gcc_common_args: [],
         gcc_c_args: [],
         gcc_cpp_args: [],
+        gcc_libs: [],
         gcc_link_args: [],
         gcc_ar_args: [],
 
@@ -215,7 +216,7 @@ export default async function() {
             this.gcc_link_args,
             `-o`, this.ruleTarget,
             this.ruleDeps,
-            this.libs,
+            this.gcc_libs,
             this.subProjectLibs,
         ]),
     });

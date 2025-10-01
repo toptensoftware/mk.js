@@ -136,6 +136,17 @@ export class Project extends EventEmitter
 
     dumpVars()
     {
+        // Setup a fake current rule while dumping vars in case any variables
+        // reference current rule variables
+        let oldCurrentRule = this.currentRule;
+        if (!this.currentRule)
+        {
+            this.currentRule = {
+                target: "target.file",
+                deps: [ "depfile1.file", "depfile2.file" ],
+            }
+        }
+
         process.stdout.write(`--- ${this.projectName} variables ---\n`);
         for (let key of [...this.vars].sort())
         {   
@@ -145,6 +156,8 @@ export class Project extends EventEmitter
             process.stdout.write(`${key}: ${JSON.stringify(this[key], null, 4)}\n`);
         }
         process.stdout.write('\n');
+
+        this.currentRules = oldCurrentRule;
     }
 
     // Set properties on this project

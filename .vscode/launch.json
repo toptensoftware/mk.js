@@ -13,7 +13,7 @@
             ],
             "program": "${workspaceFolder}/index.js",
             "args": [ "--dump-vars" ],
-            "cwd": "${workspaceFolder}/../testproj",
+            "cwd": "${workspaceFolder}/testproj",
             "outputCapture": "std",
         }
     ]

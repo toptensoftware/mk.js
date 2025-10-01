@@ -71,7 +71,7 @@ export default async function() {
                 ...this.gcc_preproc_args,
                 ...this.gcc_config_args,
                 ...this.gcc_warn_args,
-                ...this.gcc_depgen_args
+                ...this.gcc_depgen_args,
                 `--std=${this.gcc_c_standard}`,
             ]
         },
@@ -80,7 +80,7 @@ export default async function() {
                 ...this.gcc_preproc_args,
                 ...this.gcc_config_args,
                 ...this.gcc_warn_args,
-                ...this.gcc_depgen_args
+                ...this.gcc_depgen_args,
                 `--std=${this.gcc_cpp_standard}`,
             ]
         },

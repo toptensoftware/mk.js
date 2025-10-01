@@ -16,12 +16,10 @@ export default async function() {
     this.default({
         platform: process.platform,
         gcc_prefix: "",
-        gcc_args: [ 
-            '-fPIC'
-        ],
         gcc_c_standard: "c2x",
         gcc_cpp_standard: "c++17",
         gcc_as_args: [],
+        gcc_common_args: [],
         gcc_c_args: [],
         gcc_cpp_args: [],
         gcc_link_args: [],
@@ -178,6 +176,7 @@ export default async function() {
         needsBuild: checkHeaderDeps,
         action: () => this.exec([
             `${this.gcc_prefix}gcc`,
+            this.gcc_common_args,
             this.gcc_c_defaults,
             this.gcc_c_args,
             `-o`, this.ruleTarget,
@@ -195,6 +194,7 @@ export default async function() {
         needsBuild: checkHeaderDeps,
         action: () => this.exec([
             `${this.gcc_prefix}g++`,
+            this.gcc_common_args,
             this.gcc_cpp_defaults,
             this.gcc_cpp_args,
             `-o`, this.ruleTarget,

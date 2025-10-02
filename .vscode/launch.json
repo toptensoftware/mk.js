@@ -12,8 +12,8 @@
                 "<node_internals>/**"
             ],
             "program": "${workspaceFolder}/index.js",
-            "args": [ "--dump-vars" ],
-            "cwd": "${workspaceFolder}/testproj",
+            "args": [ "--rebuild" ],
+            "cwd": "${workspaceFolder}/testproj/",
             "outputCapture": "std",
         }
     ]

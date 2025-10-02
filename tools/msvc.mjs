@@ -219,7 +219,7 @@ export default async function() {
         deps: () => pchSort(this.objFiles),
         name: "link",
         mkdir: true,
-        condition: () => !this.projectKind.match(/lib|a/),
+        enabled: () => !this.projectKind.match(/lib|a/),
         action: () => this.exec({
             cmdargs: [
                 `link.exe`,
@@ -252,7 +252,7 @@ export default async function() {
         deps: () => pchSort(this.objFiles),
         name: "lib",
         mkdir: true,
-        condition: () => !!this.projectKind.match(/lib|a/),
+        enabled: () => !!this.projectKind.match(/lib|a/),
         action: async () => {
 
             // Delete old library (if exists)

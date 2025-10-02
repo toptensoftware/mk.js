@@ -470,7 +470,7 @@ can't be found.  If multiple inferred rules match a file they are merged
 
 ### Conditional Rules
 
-A rule can be conditionally included by specifying a `condition` property.
+A rule can be conditionally included by specifying an `enabled` property.
 
 This example picks one rule depending on the output file type
 
@@ -480,7 +480,7 @@ This example picks one rule depending on the output file type
 this.rule({
   name: "link",
   output: () => this.outputFile,
-  condition: () => !this.outputFile.endsWith(".lib"),
+  enabled: () => !this.outputFile.endsWith(".lib"),
   action: () => { /* commands to link executable */ },
 })
 
@@ -488,7 +488,7 @@ this.rule({
 this.rule({
   name: "lib",
   output: () => this.outputFile,
-  condition: () => this.outputFile.endsWith(".lib"),
+  enabled: () => this.outputFile.endsWith(".lib"),
   action: () => { /* command to produce library */ },
 })
 
@@ -637,7 +637,7 @@ Rules support the following properties:
   dependencies are older than the output file, the rule's action is skipped.
 * `action` - the action to invoke for this rule
 * `subject` - the name of the file to display when running a file action
-* `condition` - a callback to determine if the rule is applicable.  If defined and evaluates to 
+* `enabled` - a callback to determine if the rule is applicable.  If defined and evaluates to 
   `false` the rule is ignored.
 * `mkdir` - for file rules, if true creates the output file's directory if doesn't already exist.
 * `needsBuild` - called for files that wouldn't normally need to be built as an extra check to trigger the build.  

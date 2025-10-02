@@ -209,7 +209,7 @@ export default async function() {
         deps: () => this.objFiles,
         name: "link",
         mkdir: true,
-        condition: () => !this.projectKind.match(/lib|a/),
+        enabled: () => !this.projectKind.match(/lib|a/),
         action: () => this.exec([
             `${this.gcc_prefix}${this.gcc_link_command}`,
             this.gcc_link_defaults,
@@ -229,7 +229,7 @@ export default async function() {
         deps: () => this.objFiles,
         name: "ar",
         mkdir: true,
-        condition: () => !!this.projectKind.match(/lib|a/),
+        enabled: () => !!this.projectKind.match(/lib|a/),
         action: () => this.exec([
             `${this.gcc_prefix}ar`,
             `cr`, 

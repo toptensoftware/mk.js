@@ -5,7 +5,7 @@ import { EventEmitter } from 'node:events';
 import { register } from 'node:module';
 import { homedir } from 'node:os';
 import { globSync } from 'glob';
-import { toPosix, UserError, run, fileTime, quotedJoin, escapeRegExp, flatArray, quotedSplit, isDirectory } from "./utils.js";
+import { toPosix, UserError, run, fileTime, quotedJoin, escapeRegExp, flatArray, quotedSplit, isDirectory, selectMkFileInDirectory, readSubDirectories } from "./utils.js";
 import { spawnSync } from 'node:child_process';
 
 // Register module loader hook for "mk"
@@ -64,7 +64,12 @@ export class Project extends EventEmitter
         let absmkfile = path.resolve(mkfile);
         if (isDirectory(absmkfile))
         {
-            absmkfile = path.join(absmkfile, "mk.mjs");
+            let resolved = selectMkFileInDirectory(absmkfile);
+            if (!resolved)
+            {
+                throw new UserError(`No make script in directory '${absmkfile}'`);
+            }
+            absmkfile = resolved;
         }
 
         // Setup project variables
@@ -85,7 +90,21 @@ export class Project extends EventEmitter
             this.dumpVars();
     }
 
-    subProjects = {};
+    subProjects = [];
+
+    async loadAllSubProjects(dir)
+    {
+        if (!dir)
+            dir = ".";
+
+        let dirs = readSubDirectories(this.resolve(dir));
+
+        for (let d of dirs)
+        {
+            if (selectMkFileInDirectory(path.join(dir, d)))
+                await this.loadSubProject(d);
+        }
+    }
 
     async loadSubProject(mkfile, mkopts)
     {
@@ -97,7 +116,7 @@ export class Project extends EventEmitter
         let subProject = await Project.load(mkfile, mkopts);
 
         // Store and return
-        this.subProjects[subProject.projectName] = subProject;
+        this.subProjects.push(subProject);
         return subProject;
     }
 
@@ -139,10 +158,10 @@ export class Project extends EventEmitter
     {
         // Setup a fake current rule while dumping vars in case any variables
         // reference current rule variables
-        let oldCurrentRule = this.currentRule;
-        if (!this.currentRule)
+        let oldcurrentTarget = this.currentTarget;
+        if (!this.currentTarget)
         {
-            this.currentRule = {
+            this.currentTarget = {
                 target: "target.file",
                 deps: [ "depfile1.file", "depfile2.file" ],
             }
@@ -158,7 +177,7 @@ export class Project extends EventEmitter
         }
         process.stdout.write('\n');
 
-        this.currentRules = oldCurrentRule;
+        this.currentTargets = oldcurrentTarget;
     }
 
     // Set properties on this project
@@ -250,9 +269,20 @@ export class Project extends EventEmitter
         this.createProperty(rule, "name", rule.name);
         this.createProperty(rule, "output", rule.output);
         this.createProperty(rule, "deps", rule.deps);
-        this.createProperty(rule, "condition", rule.condition);
+        this.createProperty(rule, "enabled", rule.enabled);
         this.createProperty(rule, "mkdir", rule.mkdir);
         this.createProperty(rule, "subject", rule.subject);
+        this.createProperty(rule, "order", rule.order ?? 0);
+        this.createProperty(rule, "priority", rule.priority ?? 0);
+
+        // Also store the load order
+        rule.loadOrder = this.rules.length;
+
+        // Capture location of rule definition
+        rule.stack = (new Error()).stack;
+
+        // Store rule
+        this.rules.push(rule);
 
         // Capture location
         /*
@@ -267,10 +297,6 @@ export class Project extends EventEmitter
             src = fileURLToPath(src);  
         rule.location = { src, fn, }
         */
-
-        // Capture location of rule definition
-        rule.stack = (new Error()).stack;
-        this.rules.push(rule);
     }
 
     // use(jsfile)
@@ -356,11 +382,14 @@ export class Project extends EventEmitter
     }
 
     // Current rule vars
-    get ruleTarget() { return this.currentRule?.target }
-    get ruleDeps() { return this.currentRule?.deps }
-    get ruleFirstDep() { return this.currentRule == null ? null : this.currentRule.deps.length > 0 ? this.currentRule.deps[0] : null }
-    get ruleUniqueDeps() { return this.currentRule == null ? null : [...new Set(this.currentRule.deps)]}
-    get ruleStem() { return this.currentRule == null ? null : this.currentRule.rules[0].stem }
+    get ruleTarget() { return this.currentTarget?.target }
+    get ruleCombinedDeps() { return this.currentTarget?.deps }
+    get ruleFirstCombinedDep() { return this.currentTarget == null ? null : this.currentTarget.deps.length > 0 ? this.currentTarget.deps[0] : null }
+    get ruleUniqueCombinedDeps() { return this.currentTarget == null ? null : [...new Set(this.currentTarget.deps)]}
+    get ruleDeps() { return this.currentTarget?.deps }
+    get ruleFirstDep() { return this.currentTarget?.rule == null ? null : this.currentTarget.rule.deps.length > 0 ? this.currentTarget.rule.deps[0] : null }
+    get ruleUniqueDeps() { return this.currentTarget?.rule == null ? null : [...new Set(this.currentTarget.rule.deps)]}
+    get ruleStem() { return this.currentTarget?.rule == null ? null : this.currentTarget.rules.stem }
 
 
     #dryRunMTimes  = new Map();
@@ -379,98 +408,113 @@ export class Project extends EventEmitter
         return fileTime(ospath.resolve(this.projectDir, filename));
     }
 
-    // Can this project build a file?
-    // Either has a rule, or the file exists
-    canBuild(filename)
+    #doesRuleMatchTarget(rule, target)
     {
-        var rules = this.findRules(filename);
-        if (rules.length > 0)
+        // Ignore disabled rules
+        if (!(rule.enabled ?? true))
+            return false;
+
+        // Named rule
+        if (!rule.output)
+        {
+            // Match rule name
+            return rule.name === target;
+        }
+        else
+        {
+            // Explicit output file?
+            if (rule.output.indexOf("%") < 0)
+                return rule.output === target;
+
+            // Inferred rules?
+            let regex = new RegExp("^" + escapeRegExp(rule.output).replace(/\%/g, "(.+)") + "$");
+            return regex.exec(target);
+        }
+    }
+
+    // Can this project build a target?
+    // Either has a rule, or the file exists
+    canBuild(target)
+    {
+        if (this.rules.some(x => this.#doesRuleMatchTarget(x, target)))
             return true;
-        return this.mtime(filename) != 0;
+
+        return this.mtime(target) != 0;
     }
 
     // Find all rules for a target
     findRules(target)
     {
-        let rules = [];
+        let ruleForOrder = {};
 
         // Look for explicit rules
-        let inferenceRules = [];
         for (let rule of this.rules)
         {
-            // Named rule
-            if (!rule.output)
+            // Match it
+            let m = this.#doesRuleMatchTarget(rule, target)
+            if (!m)
+                continue;
+
+            let matchedRule;
+            if (m === true)
             {
-                // Match rule name
-                if (rule.name === target)
-                {
-                    rules.push(rule);
-                }
+                // Explicit rule
+                matchedRule = rule;
             }
             else
             {
-                // Explicit output file?
-                if (rule.output.indexOf("%") < 0)
-                {
-                    if (rule.output === target)
-                        rules.push(rule);
-                }
-                else
-                {
-                    // Remember inferred rules for later
-                    inferenceRules.push(rule);
-                }
-            }
-        }
+                // Create inferred rule
+                matchedRule = Object.assign({}, rule, {
+                    output: target,
+                    deps: flatArray(rule.deps).map(x => x.replace(/\%/g, () => m[1])),
+                    stem: m[1],
+                });
 
-        // If have an action, don't use inferred rules
-        if (!rules.some(x => x.action))
-        {
-            // Create inferred rules
-            for (let rule of inferenceRules)
-            {
-                // Match input pattern
-                let pattern = rule.output;
-
-                // Inferred rules?
-                let regex = new RegExp("^" + escapeRegExp(pattern).replace(/\%/g, "(.+)") + "$");
-                let m = regex.exec(target);
-                if (!m)
+                // Check all input dependencies can be built
+                if (!matchedRule.deps.every(x => this.canBuild(x)))
                     continue;
-                    
-                // Matched - infer rule
-                let inferred;
-                if (rule.infer)
-                {
-                    // Call infer function to generate new rule
-                    inferred = rule.infer(m[1], this);
-                }
-                else
-                {
-                    // Infer rule from pattern
-                    inferred = Object.assign({}, rule, {
-                        output: target,
-                        deps: flatArray(rule.deps).map(x => x.replace(/\%/g, () => m[1])),
-                    });
 
-                    // Special case for the subject property to delay evaluation
-                    // until rule executed.
-                    this.createProperty(inferred, "subject", () => rule.subject);
-                }
+                // Special case for the subject property to delay evaluation
+                // until rule executed.
+                this.createProperty(matchedRule, "subject", () => rule.subject);
 
-                // Add to list
-                if (inferred)
+                matchedRule.inferredFrom = rule;
+            }
+
+            // Keep only the highest priority rule for this order
+            let er = ruleForOrder[matchedRule.order];
+            if (!er)
+            {
+                ruleForOrder[matchedRule.order] = matchedRule;
+            }
+            else
+            {
+                if (er.priority == matchedRule.priority)
                 {
-                    inferred.inferredFrom = rule;
-                    inferred.stem = m[1];
-                    rules.push(inferred);
+                    if (er.inferredFrom && !matchedRule.inferredFrom)
+                    {
+                        // matched rule is explicit, existing rule is inferred, replace
+                        ruleForOrder[matchedRule.order]  = matchedRule;
+                    }
+                    else if (!er.inferredFrom && matchedRule.inferredFrom)
+                    {
+                        // matched rule is inferred, existing rule is explicit, ignore
+                    }
+                    else
+                    {
+                        throw new UserError(`Rule conflict: target '${target}' has multiple ${matchedRule.inferredFrom ? "inferred" : "explicit"} rules with order ${matchedRule.order} and priority ${matchedRule.priority}`);
+                    }
+                }
+                else if (matchedRule.priority > er.priority)
+                {
+                    // matched rule has a higher priority, use it
+                    ruleForOrder[matchedRule.order]  = matchedRule;
                 }
             }
         }
 
-        rules = rules.filter(x => x.condition ?? true);
-
-        return rules;
+        // Return sorted by order
+        return Object.keys(ruleForOrder).toSorted((a,b) => a - b).map(x => ruleForOrder[x]);
     }
 
     #builtTargets = new Map();
@@ -503,10 +547,7 @@ export class Project extends EventEmitter
         return result;
     }
 
-    // Builds a file, returning 
-    // - true if the file has rules
-    // - false if the file has no rules but the file exists
-    // If no rules, but file doesn't exist an exception is thrown
+    // Builds a target, returning true if a file target, or false if named target
     async #makeInternal(target)
     {
         let self = this;
@@ -514,111 +555,27 @@ export class Project extends EventEmitter
         // Find rules for this file
         let rules = this.findRules(target);
 
-        // The final MRule ("merged rule")
-        let finalMRule = {
-            target: target,
-            isFileTarget: undefined,
-            deps: [],
-            rules: [],
-            primaryRule: null,
-        };
-
-        function copyMRule(mrule)
+        // Check all rules have unique order
+        let deps = [];
+        let isFileTarget = true;
+        for (let i=0; i<rules.length; i++)
         {
-            return {
-                target: mrule.target,
-                isFileTarget: mrule.isFIleTarget,
-                deps: mrule.deps.slice(),
-                rules: mrule.rules.slice(),
-                primaryRule: mrule.primaryRule,
-            };
-        }
+            // Combine all deps
+            deps.push(...flatArray(rules[i].deps))
 
-        function addRule(mrule, rule)
-        {
-            // Merge file target
-            let isFileTarget = !!rule.output;
-            if (mrule.isFileTarget === undefined)
-                mrule.isFileTarget = isFileTarget;
-            else if (mrule.isFileTarget !== isFileTarget)
-                throw new UserError(`Rule conflict: target '${target}' matches both named (non-file) and file rules`);
-
-            // Only one rule can have an action
-            if (rule.action)
-            {
-                if (mrule.primaryRule)
-                    throw new UserError(`Multiple rules have actions for target '${target}'`);
-
-                // Combine deps
-                // Action rule inputs go at the start
-                mrule.deps.unshift(...flatArray(rule.deps));
-
-                // Store the primary fule
-                mrule.primaryRule = rule;
-            }
+            // Work out if it's a file or named target
+            if (i == 0)
+                isFileTarget = !!rules[i].output;
             else
-            {
-                // Combine deps
-                // Non-action rule inputs go at the end
-                mrule.deps.push(...flatArray(rule.deps));
-            }
-
-            // Add to list of rules
-            mrule.rules.push(rule);
-        }
-
-        // Start with explicit rules
-        for (let rule of rules)
-        {
-            if (!rule.inferredFrom)
-            {
-                addRule(finalMRule, rule);
-            }
-        }
-
-        // If no action, check for inferred rules
-        if (!finalMRule.action)
-        {
-            // Merge all inferred rules that don't have an action
-            for (let rule of rules)
-            {
-                if (rule.inferredFrom && !rule.action)
-                {
-                    addRule(finalMRule, rule);
-                }
-            }
-
-            // Now try each inferred rule that has an action
-            let candidateRules = [];
-            for (let rule of rules)
-            {
-                if (rule.inferredFrom && rule.action)
-                {
-                    let inferredMRule = copyMRule(finalMRule);
-                    addRule(inferredMRule, rule);
-
-                    if (inferredMRule.deps.every(x => self.canBuild(x)))
-                    {
-                        candidateRules.push(inferredMRule);
-                    }
-                }
-            }
-
-            if (candidateRules.length == 1)
-            {
-                finalMRule = candidateRules[0];
-            }
-            else if (candidateRules.length > 1)
-            {
-                throw new UserError(`Multiple inferred rules match file '${target}'`);
-            }
+                if (isFileTarget != !!rules[i].output)
+                    throw new UserError(`Rule conflict: target '${target}' matches both file and named rules`);
         }
 
         // No matching rules?
-        if (finalMRule.rules.length == 0)
+        if (rules.length == 0)
         {
             // Throw error unless this is a file target and it exists
-            if (this.mtime(target) != 0)
+            if (isFileTarget && this.mtime(target) !== 0)
                 return false;
 
             throw new UserError(`No rule for target '${target}'`);
@@ -626,12 +583,12 @@ export class Project extends EventEmitter
 
         // Build dependencies
         let needsBuild = false;
-        if (finalMRule.isFileTarget)
+        if (isFileTarget)
         {
             // File targets
             let outputTime = this.mtime(target);
             needsBuild = this.mkopts.rebuild || outputTime === 0;
-            for (let dep of finalMRule.deps)
+            for (let dep of deps)
             {
                 let inputHasRules = await this.make(dep);
 
@@ -648,7 +605,7 @@ export class Project extends EventEmitter
         {
             // Non file targets (always built)
             needsBuild = true;
-            for (let dep of finalMRule.deps)
+            for (let dep of deps)
             {
                 await this.make(dep);
             }
@@ -657,14 +614,19 @@ export class Project extends EventEmitter
 
         try
         {
-            // Set the current rule
-            this.currentRule = finalMRule;
+            this.currentTarget = { 
+                target: target, 
+                rules: rules,
+                deps: deps,
+                rule: null,
+            };
 
             // Check for other triggers
             if (!needsBuild)
             {
-                for (let r of finalMRule.rules)
+                for (let r of rules)
                 {
+                    this.currentTarget.rule = r;
                     if (r.needsBuild && r.needsBuild.call(r, this))
                     {
                         needsBuild = true;
@@ -676,38 +638,42 @@ export class Project extends EventEmitter
             if (!needsBuild)
             {
                 this.log(2, `Skipping ${target}`);
-                this.emit("skipFile", target, finalMRule);
+                this.emit("skipTarget", this.currentTarget);
             }
             else
             {
-                this.emit("willbuildTarget", target, finalMRule)
+                this.emit("willMakeTarget", this.currentTarget)
 
-                // Have actions?
-                if (finalMRule.primaryRule)
+                // Make output directory?
+                if (isFileTarget && rules.some(x => x.mkdir) && !this.mkopts.dryrun)
                 {
-                    let actions = flatArray(finalMRule.primaryRule.action);
+                    mkdirSync(path.dirname(path.join(this.projectDir, target)), { recursive: true });
+                }
+
+                // Execute all rules
+                for (let r of rules)
+                {
+                    this.currentTarget.rule = r;
+                    this.emit("willInvokeRule", this.currentTarget)
+
+
+                    let actions = flatArray(r.action);
                     if (actions.length > 0)
                     {
                         // Log file build....
-                        if (finalMRule.isFileTarget)
+                        if (isFileTarget)
                         {
+                            // Log different project
                             if (this != lastProj)
                             {
                                 if (lastProj)
                                     this.log(1, ``);
                                 lastProj = this;
-                                //this.log(1, `${"project".padStart(10, ' ')}: ${this.projectName} (./${path.relative(toPosix(process.cwd()), lastProjDir)})`);
                                 this.log(1, `----- ${this.projectName} (./${path.relative(toPosix(process.cwd()), this.projectDir)}) -----`);
                             }
-                            this.log(1, `${(finalMRule.primaryRule.name ?? "creating").padStart(10, ' ')}: ${finalMRule.primaryRule.subject ?? target} `);
-                        }
-//                        else
-//                            this.log(1, `${finalMRule.primaryRule.name}`);
 
-                        // Make output directory?
-                        if (finalMRule.isFileTarget && finalMRule.rules.some(x => x.mkdir) && !this.mkopts.dryrun)
-                        {
-                            mkdirSync(path.dirname(path.join(this.projectDir, target)), { recursive: true });
+                            // Log action
+                            this.log(1, `${(r.name ?? "creating").padStart(10, ' ')}: ${r.subject ?? target} `);
                         }
 
                         // Run actions
@@ -716,19 +682,21 @@ export class Project extends EventEmitter
                             await this.exec(action);
                         }
                     }
+
+                    this.emit("didInvokeRule", this.currentTarget)
+                    this.currentTarget.rule = r;
                 }
 
-
                 // If dry run, store current time as the mtime for file targets
-                if (this.mkopts.dryrun && finalMRule.isFileTarget)
+                if (this.mkopts.dryrun && isFileTarget)
                     this.#dryRunMTimes.set(target, Date.now());
 
-                this.emit("didbuildTarget", target, finalMRule);
+                this.emit("didMakeTarget", this.currentTarget);
             }
         }
         finally
         {
-            this.currentRule = null;
+            this.currentTarget = null;
         }
 
         return true;
@@ -747,7 +715,7 @@ export class Project extends EventEmitter
         // Callback function?
         if (typeof(cmd) === 'function')
         {
-            cmd = await cmd.call(this, this.currentRule, opts);
+            cmd = await cmd.call(this, this.currentTarget, opts);
             if (!cmd)
                 return;
         }   

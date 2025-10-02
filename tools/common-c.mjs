@@ -1,7 +1,8 @@
-import { cache, changeExtension } from "../utils.js";
-import { posix as path, default as ospath } from 'node:path';
+import { cache } from "../utils.js";
 
 export default async function() {
+
+    await this.use("./build-sub-projects.mjs");
 
     // Default variables
     this.default({
@@ -20,10 +21,10 @@ export default async function() {
         warningLevel: 3,
         define: [],
         includePath: [],
-        subProjectLibs: () => Object.values(this.subProjects)
+        subProjectLibs: () => this.subProjects
                                 .filter(x => !!x.linkLibrary)
                                 .map(x => this.relative(x.resolve(x.linkLibrary))),
-        subProjectRuntimeFiles: () => Object.values(this.subProjects)
+        subProjectRuntimeFiles: () => this.subProjects
                                 .filter(x => !!x.runtimeFiles)
                                 .map(x => x.runtimeFiles.map(y => this.relative(x.resolve(y))))
                                 .flat(Infinity),
@@ -33,53 +34,16 @@ export default async function() {
     this.rule({
         name: "build",
         deps: () => [ 
-            "build-sub-projects", 
             this.outputFile, 
             "copy-sub-project-runtimes" 
         ],
     });
 
-    // Build sub-projects target
-    this.rule({
-        name: "build-sub-projects",
-        action: async () => {
-            for (let sp of Object.values(this.subProjects))
-            {
-                await sp.make("build");
-            }
-        }
-    })
-
-    // Copy sub-projects runtimes
-    this.rule({
-        name: "copy-sub-project-runtimes",
-        action: async () => {
-            let outdir = path.dirname(this.resolve(this.outputFile));
-            let files = this.subProjectRuntimeFiles.filter(x => path.dirname(this.resolve(x)) != outdir);
-            if (files.length)
-            {
-                await this.exec(['cp', '-u', ...files, this.relative(outdir) + "/"]);
-            }
-        }
-    })
-
     // Clean target
     this.rule({
         name: "clean",
-        deps: "clean-sub-projects",
         action: () => `rm -rf ${this.buildDir}`
     });
-
-    // Clean Sub Projects target
-    this.rule({
-        name: "clean-sub-projects",
-        action: async () => {
-            for (let sp of Object.values(this.subProjects))
-            {
-                await sp.make("clean");
-            }
-        }
-    })
 
     // Run target
     this.rule({
@@ -89,6 +53,6 @@ export default async function() {
             cmdargs: [ this.outputFile ],
             opts: { shell: false },
         }),
-        condition: () => this.projectKind == "exe",
+        enabled: () => this.projectKind == "exe",
     });
 }

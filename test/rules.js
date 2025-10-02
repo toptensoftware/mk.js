@@ -4,9 +4,9 @@ import { strict as assert } from "node:assert";
 import { toString, quotedJoin } from "../utils.js";
 import { Project } from "../Project.js";
 
-function ruleToString(rule)
+function ruleToString(t)
 {
-    return toString(rule.target) + " : " + quotedJoin(rule.deps) + " : " + rule.primaryRule.action.name + "()";
+    return toString(t.target) + " : " + quotedJoin(t.deps) + " : " + t.rule.action.name + "()";
 }
 
 class MockProject extends Project
@@ -14,11 +14,11 @@ class MockProject extends Project
     constructor()
     {
         super();
-        this.on("willbuildTarget", (filename, mrule) => {
-            this.results.push(ruleToString(mrule));
+        this.on("willInvokeRule", (target) => {
+            this.results.push(ruleToString(target));
         });
-        this.on("skipFile", (filename) => {
-            this.results.push(`skipping ${filename}`);
+        this.on("skipTarget", (target) => {
+            this.results.push(`skipping ${target.target}`);
         });
         this.filetimes = {
             "test.c": 1000,
@@ -143,7 +143,7 @@ test("conflicting multiple inferred rules", async (t) =>
         action: function compileC(rule) { }
     }); 
 
-    await assert.rejects(async() => await proj.make("test.obj"), /Multiple inferred rules/);
+    await assert.rejects(async() => await proj.make("test.obj"), /multiple inferred rules/);
 });
 
 test("build if output missing", async (t) =>
@@ -210,6 +210,115 @@ test("only build target once", async (t) =>
 
     assert.deepEqual(proj.results, [
         "out-of-date.obj : out-of-date.c : compileC()",
+    ]);
+});
+
+
+test("multiple order", async (t) =>
+{
+    let proj = new MockProject();
+
+    proj.rule({
+        output: "rule",
+        order: 2,
+        action: function pri2(rule) { }
+    }); 
+
+    proj.rule({
+        output: "rule",
+        order: 1,
+        action: function pri1(rule) { }
+    }); 
+
+    await proj.make("rule");
+
+    assert.deepEqual(proj.results, [
+        "rule :  : pri1()",
+        "rule :  : pri2()",
+    ]);
+});
+
+test("same order, higher priority wins", async (t) =>
+{
+    let proj = new MockProject();
+    proj.rule({
+        output: "rule",
+        order: 1,
+        priority: 1,
+        action: function first(rule) { }
+    }); 
+    proj.rule({
+        output: "rule",
+        order: 1,
+        priority: 2,
+        action: function second(rule) { }
+    }); 
+
+    await proj.make("rule");
+
+    assert.deepEqual(proj.results, [
+        "rule :  : second()",
+    ]);
+});
+
+test("same order, same priority, both explicit", async (t) =>
+{
+    let proj = new MockProject();
+    proj.rule({
+        output: "rule",
+        order: 1,
+        priority: 1,
+        action: function first(rule) { }
+    }); 
+    proj.rule({
+        output: "rule",
+        order: 1,
+        priority: 1,
+        action: function second(rule) { }
+    }); 
+
+    await assert.rejects(async() => await proj.make("rule"), /multiple explicit rules/);
+});
+
+test("same order, same priority, both inferred", async (t) =>
+{
+    let proj = new MockProject();
+    proj.rule({
+        output: "rul%",
+        order: 1,
+        priority: 1,
+        action: function first(rule) { }
+    }); 
+    proj.rule({
+        output: "rul%",
+        order: 1,
+        priority: 1,
+        action: function second(rule) { }
+    }); 
+
+    await assert.rejects(async() => await proj.make("rule"), /multiple inferred rules/);
+});
+
+test("same order, same priority, explicit wins", async (t) =>
+{
+    let proj = new MockProject();
+    proj.rule({
+        output: "rul%",
+        order: 1,
+        priority: 1,
+        action: function first(rule) { }
+    }); 
+    proj.rule({
+        output: "rule",
+        order: 1,
+        priority: 1,
+        action: function second(rule) { }
+    }); 
+
+    await proj.make("rule");
+
+    assert.deepEqual(proj.results, [
+        "rule :  : second()",
     ]);
 });
 

@@ -380,4 +380,63 @@ export function splitEscapedSpaces(str)
     return result;
 }
 
+export function isFile(path)
+{
+    try
+    {
+        return fs.statSync(path).isFile();
+    }
+    catch (err)
+    {
+        if (err.code !== 'ENOENT')
+            throw err;
+        return false;
+    }
+}
 
+export function selectMkFileInDirectory(dir)
+{
+    let file = path.join(dir, "mk.mjs");
+    if (isFile(file))
+        return file;
+
+    /*
+    file = path.join(dir, "mk.js");
+    if (isFile(file))
+        return file;
+    */
+
+    if (dir.endsWith("/") || dir.endsWith("\\"))
+        dir = dir.substring(0, dir.length - 1);
+    let projName = path.basename(dir);
+
+    /*
+    file = path.join(dir, projName + ".mk.js");
+    if (isFile(file))
+        return file;
+    */
+
+    file = path.join(dir, projName + ".mk.mjs");
+    if (isFile(file))
+        return file;
+
+
+    /*
+    file = path.join(dir, projName + ".js");
+    if (isFile(file))
+        return file;
+    */
+
+    file = path.join(dir, projName + ".mjs");
+    if (isFile(file))
+        return file;
+
+    return null;
+}
+
+export function readSubDirectories(dir) {
+  return fs.readdirSync(dir, { withFileTypes: true })
+    .filter(entry => entry.isDirectory())
+    .toSorted()
+    .map(entry => entry.name);
+}

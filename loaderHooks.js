@@ -3,9 +3,9 @@ import { posix as path, default as ospath } from "node:path";
 
 const __dirname = ospath.dirname(fileURLToPath(import.meta.url));
 
-
 export async function resolve(specifier, context, nextResolve) {
 
+    // Handle: import {} from 'mk';
     if (specifier == 'mk')
     {
         return {
@@ -14,5 +14,12 @@ export async function resolve(specifier, context, nextResolve) {
         }
     }
 
-    return nextResolve(specifier, context);
+    let r = await nextResolve(specifier, context);
+
+    if (r && specifier.match(/(^|[\/\\\.])mk.js$/))
+    {
+        r.format = "module";
+    }
+
+    return r;
 }

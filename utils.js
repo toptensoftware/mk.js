@@ -400,21 +400,17 @@ export function selectMkFileInDirectory(dir)
     if (isFile(file))
         return file;
 
-    /*
     file = path.join(dir, "mk.js");
     if (isFile(file))
         return file;
-    */
 
     if (dir.endsWith("/") || dir.endsWith("\\"))
         dir = dir.substring(0, dir.length - 1);
     let projName = path.basename(dir);
 
-    /*
     file = path.join(dir, projName + ".mk.js");
     if (isFile(file))
         return file;
-    */
 
     file = path.join(dir, projName + ".mk.mjs");
     if (isFile(file))

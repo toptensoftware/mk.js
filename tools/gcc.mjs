@@ -206,7 +206,7 @@ export default async function() {
     // Link (executable or so)
     this.rule({
         output: () => this.outputFile,
-        deps: () => this.objFiles,
+        deps: () => [this.objFiles, this.gcc_libs, this.subProjectLibs],
         name: "link",
         mkdir: true,
         enabled: () => !this.projectKind.match(/lib|a/),

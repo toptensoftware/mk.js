@@ -85,6 +85,7 @@ export default async function() {
         asm_extensions: "asm",
         objFiles: () => this.sourceFiles.map(x => `${this.objDir}/${changeExtension(x, "obj")}`),
         msvcrt: "MD",
+        msvc_libs: [],
         linkLibrary: () => {
             switch (this.projectKind)
             {
@@ -181,7 +182,7 @@ export default async function() {
                 ? [ "/D_DEBUG", "/Od", `/${this.msvcrt}d` ] 
                 : [ "/DNDEBUG", "/O2", "/Oi", `/${this.msvcrt}` ],
             this.msvc_cl_args,
-            pchFlags(),
+            //pchFlags(),
             '/c', this.ruleFirstDep,
             `/Fo${this.ruleTarget}`,
         ],
@@ -216,7 +217,7 @@ export default async function() {
     // Link (.exe or .dll)
     this.rule({
         output: () => this.outputFile,
-        deps: () => pchSort(this.objFiles),
+        deps: () => [this.objFiles, this.msvc_libs, this.subProjectLibs],
         name: "link",
         mkdir: true,
         enabled: () => !this.projectKind.match(/lib|a/),
@@ -249,7 +250,7 @@ export default async function() {
     // Create library (.lib)
     this.rule({
         output: () => this.outputFile,
-        deps: () => pchSort(this.objFiles),
+        deps: () => this.objFiles,
         name: "lib",
         mkdir: true,
         enabled: () => !!this.projectKind.match(/lib|a/),
@@ -275,6 +276,7 @@ export default async function() {
         },
     });
 
+/*
 
     // Sort object files so the pch source file is first
     // Required so the pch file is created before trying to use it
@@ -363,6 +365,7 @@ export default async function() {
         return _pchInfo;
     }
 
+*/
 
     // Creates a filter to filter the stdout from cl.exe to
     // 1. filter out the source file name

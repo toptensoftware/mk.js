@@ -1,4 +1,6 @@
 import fs from 'node:fs';
+import crypto from 'node:crypto';
+import os from 'node:os';
 import { posix as path, default as ospath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
@@ -28,6 +30,7 @@ function resolveVcVarsLocation()
 }
 
 let msvc_env = {};
+let cache;
 function captureMsvcEnvironment(platform)
 {
     if (!platform) 
@@ -43,9 +46,45 @@ function captureMsvcEnvironment(platform)
     if (vcvars == null)
         throw new Error("Unable to resolve VC vars location");
 
+    // Load cache
+    // Because vsvarsall is pretty slow (up to a couple of second)
+    // cache the results in our own cache file, keyed on a hash
+    // of the current environment and the platform we're querying.
+    let cache_file = path.join(os.tmpdir(), "mk.js.msvc-cache.json");
+    if (!cache)
+    {
+        if (fs.existsSync(cache_file))
+        {
+            cache = JSON.parse(fs.readFileSync(cache_file, "utf8"));
+        }     
+        else
+        {
+            cache = {};
+        }   
+    }
+
+    // Delete dynamic environment variables that might change every run
+    let process_env = Object.assign({}, process.env);
+    delete process_env["CHROME_CRASHPAD_PIPE_NAME"];
+    delete process_env["IGCCSVC_DB"];
+    delete process_env["WT_SESSION"];
+    delete process_env["WT_PROFILE_ID"];
+    delete process_env["VSCODE_INSPECTOR_OPTIONS"];
+
+    // Calculate hash key
+    let cache_hash = crypto.createHash('sha256')
+        .update(JSON.stringify(process_env) + "--" + platform + "--" + vcvars).digest("hex");
+    if (cache[platform] && cache[platform].hash == cache_hash)
+    {
+//        console.log("Using pre-cached MSVC environment");
+        return msvc_env[platform] = cache[platform].env;
+    }
+
     // Run it
     try 
     {
+//        console.log("Determining MSVC environment");
+
         // Run vcvars and capture resulting environment
         let output = execSync(`"${vcvars}" ${platform} && echo --- ENV --- && set`, 
         { 
@@ -63,6 +102,8 @@ function captureMsvcEnvironment(platform)
         }
 
         // Done
+        cache[platform] = { hash: cache_hash, env };
+        fs.writeFileSync(cache_file, JSON.stringify(cache, null, 4), "utf8");
         return msvc_env[platform] = env;
     } 
     catch (error) 

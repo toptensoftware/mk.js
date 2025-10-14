@@ -122,6 +122,7 @@ export default async function() {
 
     // Default variables
     this.default({
+        toolchain: "msvc",
         platform: "x64",
         asm_extensions: "asm",
         objFiles: () => this.sourceFiles.map(x => `${this.objDir}/${changeExtension(x, "obj")}`),

@@ -14,6 +14,7 @@ export default async function() {
 
     // Default variables
     this.default({
+        toolchain: "gcc",
         platform: process.platform,
         gcc_prefix: "",
         gcc_c_standard: "c2x",

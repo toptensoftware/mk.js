@@ -21,6 +21,8 @@ export default async function() {
         warningLevel: 3,
         define: [],
         includePath: [],
+        c_standard: "c2x",
+        cpp_standard: "c++17",
         subProjectLibs: () => this.subProjects
                                 .filter(x => !!x.linkLibrary)
                                 .map(x => this.relative(x.resolve(x.linkLibrary))),

@@ -128,6 +128,8 @@ export default async function() {
         objFiles: () => this.sourceFiles.map(x => `${this.objDir}/${changeExtension(x, "obj")}`),
         msvcrt: "MD",
         msvc_libs: [],
+        msvc_c_standard: () => this.c_standard,
+        msvc_cpp_standard: () => this.cpp_standard,
         linkLibrary: () => {
             switch (this.projectKind)
             {
@@ -218,6 +220,7 @@ export default async function() {
             `/W${this.warningLevel}`,
             `/Zc:wchar_t`,
             `/FC`,
+            `/std:${this.ruleFirstDep.endsWith(".c") ? this.msvc_c_standard : this.msvc_cpp_standard}`,
             flatArray(this.define).map(x => `/D${x}`),
             flatArray(this.includePath).map(x => `/I${x}`),
             this.config == "debug"

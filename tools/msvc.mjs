@@ -220,7 +220,7 @@ export default async function() {
             `/W${this.warningLevel}`,
             `/Zc:wchar_t`,
             `/FC`,
-            `/std:${this.ruleFirstDep.endsWith(".c") ? this.msvc_c_standard : this.msvc_cpp_standard}`,
+            this.ruleFirstDep.endsWith(".c") ? [ ] : [ `/std:${this.msvc_cpp_standard}` ],
             flatArray(this.define).map(x => `/D${x}`),
             flatArray(this.includePath).map(x => `/I${x}`),
             this.config == "debug"

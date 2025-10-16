@@ -92,6 +92,7 @@ export default async function() {
             ].filter(x => x !== undefined);
         },
         gcc_link_command: "g++",    
+        gcc_link_passthrough: () => this.gcc_link_command == "ld" ? "" : "-Wl,",
         asm_extensions: "s,S",
         objFiles: () => this.sourceFiles.map(x => `${this.objDir}/${changeExtension(x, "o")}`),
         linkLibrary: () => {
@@ -217,10 +218,10 @@ export default async function() {
             this.gcc_link_args,
             `-o`, this.ruleTarget,
             this.ruleDeps,
-            `--start-group`,
+            `${this.gcc_link_passthrough}--start-group`,
             this.gcc_libs,
             this.subProjectLibs,
-            `--end-group`
+            `${this.gcc_link_passthrough}--end-group`
         ]),
     });
 

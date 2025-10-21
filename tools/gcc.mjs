@@ -23,7 +23,8 @@ export default async function() {
         gcc_common_args: [],
         gcc_c_args: [],
         gcc_cpp_args: [],
-        gcc_libs: [],
+        gcc_archives: [],
+        gcc_libraries: [],
         gcc_link_args: [],
         gcc_ar_args: [],
 
@@ -208,7 +209,7 @@ export default async function() {
     // Link (executable or so)
     this.rule({
         output: () => this.outputFile,
-        deps: () => [this.objFiles, this.gcc_libs, this.subProjectLibs],
+        deps: () => [this.objFiles, this.gcc_archives, this.subProjectLibs],
         name: "link",
         mkdir: true,
         enabled: () => !this.projectKind.match(/lib|a/),
@@ -219,8 +220,9 @@ export default async function() {
             `-o`, this.ruleTarget,
             this.ruleDeps,
             `${this.gcc_link_passthrough}--start-group`,
-            this.gcc_libs,
+            this.gcc_archives,
             this.subProjectLibs,
+            this.gcc_libraries.map(x => `-l${x}`),
             `${this.gcc_link_passthrough}--end-group`
         ]),
     });

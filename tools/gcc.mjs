@@ -17,6 +17,7 @@ export default async function() {
         toolchain: "gcc",
         platform: process.platform,
         gcc_prefix: "",
+        gcc_sysroot: undefined,
         gcc_c_standard: () => this.c_standard,
         gcc_cpp_standard: () => this.cpp_standard,
         gcc_as_args: [],
@@ -57,6 +58,7 @@ export default async function() {
             return [
                 ...this.gcc_preproc_args,
                 ...this.gcc_config_args,
+                this.gcc_sysroot ? `--sysroot=${this.gcc_sysroot}` : undefined,
             ]
         },
         gcc_depgen_args: () => {
@@ -74,6 +76,7 @@ export default async function() {
                 ...this.gcc_warn_args,
                 ...this.gcc_depgen_args,
                 `--std=${this.gcc_c_standard}`,
+                this.gcc_sysroot ? `--sysroot=${this.gcc_sysroot}` : undefined,
             ]
         },
         gcc_cpp_defaults: () => {
@@ -83,13 +86,15 @@ export default async function() {
                 ...this.gcc_warn_args,
                 ...this.gcc_depgen_args,
                 `--std=${this.gcc_cpp_standard}`,
+                this.gcc_sysroot ? `--sysroot=${this.gcc_sysroot}` : undefined,
             ]
         },
         gcc_link_defaults: () => {
             return [
                 this.projectKind == "exe" ? `-Wl,-rpath,'$ORIGIN'` : undefined,
                 this.projectKind.match(/dll|so/) ? 
-                    [ `-shared`, `-Wl,-soname,${path.basename(this.ruleTarget)}` ] : undefined
+                    [ `-shared`, `-Wl,-soname,${path.basename(this.ruleTarget)}` ] : undefined,
+                this.gcc_sysroot ? `--sysroot=${this.gcc_sysroot}` : undefined,
             ].filter(x => x !== undefined);
         },
         gcc_link_command: "g++",    
